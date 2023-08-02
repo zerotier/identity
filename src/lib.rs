@@ -6,17 +6,62 @@
  * https://www.zerotier.com/
  */
 
-mod address;
-mod signature;
+use std::hash::Hash;
+use std::str::FromStr;
 
-pub mod identity;
-pub mod identitysecret;
+use zerotier_common_utils::tofrombytes::ToFromBytes;
 
-pub use address::Address;
-pub use identity::Identity;
-pub use identitysecret::IdentitySecret;
-pub use signature::Signature;
+pub trait Address: ToString + FromStr + ToFromBytes + Sync + Send + Clone + PartialEq + Eq + Hash + PartialOrd + Ord + AsRef<[u8]> + 'static {
+    /// Size of this address in bytes.
+    const SIZE: usize;
+}
 
+pub trait Identity: ToString + FromStr + ToFromBytes + Sync + Send + Clone + PartialEq + Eq + Hash + PartialOrd + Ord + 'static {
+    /// Number of bytes in this identity's byte serialized representation.
+    const SIZE: usize;
+
+    /// Number of bytes in a signature from this identity.
+    const SIGNATURE_SIZE: usize;
+
+    /// Secret type corresponding to this identity.
+    type Secret: IdentitySecret;
+
+    /// Verify a signature made by this identity's corresponding secret.
+    fn verify_signature(&self, data: &[u8], signature: &[u8]) -> bool;
+}
+
+pub trait IdentitySecret: Sync + Send + Clone + PartialEq + Eq + Hash + PartialOrd + Ord + 'static {
+    type Public: Identity;
+
+    /// Type returned by sign(), should typically be [u8; Public::SIGNATURE_SIZE].
+    type Signature;
+
+    /// Generate a new identity.
+    /// This may in some cases be a time consuming operation.
+    fn generate() -> Self;
+
+    /// Get the public portion of this secret identity.
+    fn public(&self) -> &Self::Public;
+
+    /// Cryptographically sign a message with this identity.
+    fn sign(&self, data: &[u8]) -> Self::Signature;
+}
+
+pub mod p384;
+pub mod x25519;
+
+//mod address;
+//mod signature;
+
+//pub mod identity;
+//pub mod identitysecret;
+
+//pub use address::Address;
+//pub use identity::Identity;
+//pub use identitysecret::IdentitySecret;
+//pub use signature::Signature;
+
+/*
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -98,3 +143,4 @@ mod tests {
         assert_eq!(id2_de.to_bytes(), id2.public.to_bytes());
     }
 }
+*/
