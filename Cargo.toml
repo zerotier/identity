@@ -1,0 +1,20 @@
+[package]
+authors = ["ZeroTier, Inc. <contact@zerotier.com>"]
+edition = "2021"
+license = "MPL-2.0"
+name = "zerotier-identity"
+version = "0.1.0"
+
+[features]
+default = ["legacy_zt1"]
+legacy_zt1 = []
+
+[lib]
+name = "zerotier_identity"
+path = "src/lib.rs"
+doc = true
+
+[dependencies]
+serde = { version = "*", features = ["derive"], default-features = false }
+zerotier-common-utils = { git = "https://github.com/zerotier/common-utils.git", branch = "main" }
+zerotier-crypto-glue = { git = "ssh://git@github.com/zerotier/crypto-glue.git", branch = "main" }
