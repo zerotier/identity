@@ -6,6 +6,7 @@ use std::str::FromStr;
 
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 
+use zerotier_common_utils::blob::Blob;
 use zerotier_common_utils::error::InvalidParameterError;
 use zerotier_common_utils::hex;
 use zerotier_common_utils::tofrombytes::ToFromBytes;
@@ -24,7 +25,7 @@ impl Address {
     pub const RESERVED_PREFIX: u8 = 0xff;
 
     fn is_valid(&self) -> bool {
-        self.0[0] != Self::RESERVED_PREFIX && self.0.iter().all(|x| *x == 0)
+        self.0[0] != Self::RESERVED_PREFIX && self.0.iter().any(|x| *x != 0)
     }
 }
 
@@ -385,17 +386,28 @@ impl crate::IdentitySecret for IdentitySecret {
     }
 }
 
+#[derive(Serialize, Deserialize)]
+struct IdentitySecretSerialized {
+    a: Blob<5>,
+    p0: Blob<C25519_PUBLIC_KEY_SIZE>,
+    s0: Blob<C25519_SECRET_KEY_SIZE>,
+    p1: Blob<ED25519_PUBLIC_KEY_SIZE>,
+    s1: Blob<ED25519_SECRET_KEY_SIZE>,
+}
+
 impl Serialize for IdentitySecret {
     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
     where
         S: Serializer,
     {
-        (
-            &self.public,
-            &self.ecdh.secret_bytes().as_bytes()[..],
-            &self.eddsa.secret_bytes().as_bytes()[..],
-        )
-            .serialize(serializer)
+        IdentitySecretSerialized {
+            a: self.public.address.0.into(),
+            p0: self.public.ecdh.into(),
+            s0: (*self.ecdh.secret_bytes().as_bytes()).into(),
+            p1: self.public.eddsa.into(),
+            s1: (*self.eddsa.secret_bytes().as_bytes()).into(),
+        }
+        .serialize(serializer)
     }
 }
 
@@ -404,10 +416,37 @@ impl<'de> Deserialize<'de> for IdentitySecret {
     where
         D: Deserializer<'de>,
     {
-        let d = <(Identity, &[u8], &[u8])>::deserialize(deserializer)?;
-        let ecdh = X25519KeyPair::from_bytes(&d.0.ecdh, d.1).ok_or(serde::de::Error::custom(IDENTITY_ERR.0))?;
-        let eddsa = Ed25519KeyPair::from_bytes(&d.0.eddsa, d.2).ok_or(serde::de::Error::custom(IDENTITY_ERR.0))?;
-        Ok(Self { public: d.0, ecdh, eddsa })
+        let d = <IdentitySecretSerialized>::deserialize(deserializer)?;
+        let ecdh = X25519KeyPair::from_bytes(d.p0.as_bytes(), d.s0.as_bytes());
+        let eddsa = Ed25519KeyPair::from_bytes(d.p1.as_bytes(), d.s1.as_bytes());
+        if ecdh.is_none() || eddsa.is_none() {
+            return Err(serde::de::Error::custom(IDENTITY_ERR.0));
+        }
+        let ecdh = ecdh.unwrap();
+        let eddsa = eddsa.unwrap();
+        let id = Self {
+            public: Identity {
+                address: Address(d.a.into()),
+                ecdh: ecdh.public_bytes(),
+                eddsa: eddsa.public_bytes(),
+            },
+            ecdh,
+            eddsa,
+        };
+        if !id.public.address.is_valid() || !id.public.locally_validate() {
+            return Err(serde::de::Error::custom(IDENTITY_ERR.0));
+        }
+        return Ok(id);
+    }
+}
+
+impl ToFromBytes for IdentitySecret {
+    fn read_bytes<R: std::io::Read>(r: &mut R) -> std::io::Result<Self> {
+        serde_cbor::from_reader(r).map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e.to_string()))
+    }
+
+    fn write_bytes<W: std::io::Write>(&self, w: &mut W) -> std::io::Result<()> {
+        serde_cbor::to_writer(w, self).map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e.to_string()))
     }
 }
 
@@ -473,5 +512,27 @@ mod tests {
         }
         let end = ms_monotonic();
         println!("generation time: {} ms/identity", ((end - start) as f64) / 3.0);
+    }
+
+    #[test]
+    fn tostring_fromstring() {
+        let secret = x25519::IdentitySecret::generate();
+        assert!(x25519::Address::from_str(secret.public.address.to_string().as_str())
+            .unwrap()
+            .eq(&secret.public.address));
+        assert!(x25519::Identity::from_str(secret.public.to_string().as_str()).unwrap().eq(&secret.public));
+        assert!(x25519::IdentitySecret::from_str(secret.to_string().as_str()).unwrap().eq(&secret));
+    }
+
+    #[test]
+    fn tobytes_frombytes() {
+        let secret = x25519::IdentitySecret::generate();
+        assert!(x25519::Address::from_bytes(secret.public.address.to_bytes().as_slice())
+            .unwrap()
+            .eq(&secret.public.address));
+        assert!(x25519::Identity::from_bytes(secret.public.to_bytes().as_slice())
+            .unwrap()
+            .eq(&secret.public));
+        assert!(x25519::IdentitySecret::from_bytes(secret.to_bytes().as_slice()).unwrap().eq(&secret));
     }
 }
