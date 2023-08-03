@@ -11,11 +11,13 @@ use std::str::FromStr;
 
 use zerotier_common_utils::tofrombytes::ToFromBytes;
 
+/// A unique global identifier for a ZeroTier identity.
 pub trait Address: ToString + FromStr + ToFromBytes + Sync + Send + Clone + PartialEq + Eq + Hash + PartialOrd + Ord + AsRef<[u8]> + 'static {
     /// Size of this address in bytes.
     const SIZE: usize;
 }
 
+/// A bundle of public key(s) securely identifying a participant on the network.
 pub trait Identity: ToString + FromStr + ToFromBytes + Sync + Send + Clone + PartialEq + Eq + Hash + PartialOrd + Ord + 'static {
     /// Number of bytes in this identity's byte serialized representation.
     const SIZE: usize;
@@ -30,10 +32,12 @@ pub trait Identity: ToString + FromStr + ToFromBytes + Sync + Send + Clone + Par
     fn verify_signature(&self, data: &[u8], signature: &[u8]) -> bool;
 }
 
+/// Secret keys that correspond to a public Identity.
 pub trait IdentitySecret: Sync + Send + Clone + PartialEq + Eq + Hash + PartialOrd + Ord + 'static {
     type Public: Identity;
 
     /// Type returned by sign(), should typically be [u8; Public::SIGNATURE_SIZE].
+    /// This could go away if Rust let you reference local constants in traits.
     type Signature;
 
     /// Generate a new identity.

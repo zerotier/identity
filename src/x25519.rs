@@ -3,11 +3,12 @@ use std::hash::Hash;
 use std::mem::transmute_copy;
 use std::ptr::copy_nonoverlapping;
 use std::str::FromStr;
-use std::sync::Mutex;
+
+use serde::{Deserialize, Deserializer, Serialize, Serializer};
 
 use zerotier_common_utils::error::InvalidParameterError;
+use zerotier_common_utils::hex;
 use zerotier_common_utils::tofrombytes::ToFromBytes;
-use zerotier_common_utils::{hex, parallelism};
 use zerotier_crypto_glue::hash::SHA512;
 use zerotier_crypto_glue::salsa::Salsa;
 use zerotier_crypto_glue::x25519::*;
@@ -100,16 +101,53 @@ impl AsRef<[u8]> for Address {
     }
 }
 
+impl Serialize for Address {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        if serializer.is_human_readable() {
+            self.to_string().serialize(serializer)
+        } else {
+            serializer.serialize_bytes(&self.0)
+        }
+    }
+}
+
+impl<'de> Deserialize<'de> for Address {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        if deserializer.is_human_readable() {
+            Address::from_str(<&str>::deserialize(deserializer)?).map_err(|_| serde::de::Error::custom(ADDRESS_ERR.0))
+        } else {
+            Address::from_bytes(<&[u8]>::deserialize(deserializer)?).map_err(|_| serde::de::Error::custom(ADDRESS_ERR.0))
+        }
+    }
+}
+
 impl crate::Address for Address {
     const SIZE: usize = 5;
 }
 
 /// Legacy V1 ZeroTier identity based on x25519 elliptic curves.
-#[derive(Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
+#[derive(Clone, PartialEq, Eq, PartialOrd, Ord)]
 pub struct Identity {
     pub address: Address,
     pub ecdh: [u8; C25519_PUBLIC_KEY_SIZE],
     pub eddsa: [u8; ED25519_PUBLIC_KEY_SIZE],
+}
+
+impl Identity {
+    fn locally_validate(&self) -> bool {
+        let mut legacy_address_hasher = SHA512::new();
+        legacy_address_hasher.update(&self.ecdh);
+        legacy_address_hasher.update(&self.eddsa);
+        let mut legacy_address_hash = legacy_address_hasher.finish();
+        legacy_address_derivation_work_function(&mut legacy_address_hash);
+        legacy_address_hash[0] < LEGACY_ADDRESS_POW_THRESHOLD && legacy_address_hash[59..64].eq(&self.address.0)
+    }
 }
 
 impl ToString for Identity {
@@ -136,23 +174,28 @@ impl FromStr for Identity {
         if bytes.len() != C25519_PUBLIC_KEY_SIZE + ED25519_PUBLIC_KEY_SIZE {
             return Err(IDENTITY_ERR);
         }
-        Ok(Self {
+        let id = Self {
             address,
             ecdh: bytes.as_slice()[..C25519_PUBLIC_KEY_SIZE].try_into().unwrap(),
             eddsa: bytes.as_slice()[C25519_PUBLIC_KEY_SIZE..].try_into().unwrap(),
-        })
+        };
+        if id.locally_validate() {
+            return Ok(id);
+        } else {
+            return Err(IDENTITY_ERR);
+        }
     }
 }
 
 impl ToFromBytes for Identity {
     fn read_bytes<R: std::io::Read>(r: &mut R) -> std::io::Result<Self> {
-        let e = || Err(std::io::Error::new(std::io::ErrorKind::Other, "invalid identity"))?;
+        let e = || Err(std::io::Error::new(std::io::ErrorKind::Other, IDENTITY_ERR.0))?;
         let mut tmp = [0u8; 5 + 1 + C25519_PUBLIC_KEY_SIZE + ED25519_PUBLIC_KEY_SIZE + 1];
         r.read_exact(&mut tmp)?;
         if tmp[5] != 0 {
             return e();
         }
-        Ok(Self {
+        let id = Self {
             address: {
                 let a = Address(tmp[..5].try_into().unwrap());
                 if a.is_valid() {
@@ -165,7 +208,12 @@ impl ToFromBytes for Identity {
             eddsa: tmp[5 + 1 + C25519_PUBLIC_KEY_SIZE..5 + 1 + C25519_PUBLIC_KEY_SIZE + ED25519_PUBLIC_KEY_SIZE]
                 .try_into()
                 .unwrap(),
-        })
+        };
+        if id.locally_validate() {
+            return Ok(id);
+        } else {
+            return e();
+        }
     }
 
     fn write_bytes<W: std::io::Write>(&self, w: &mut W) -> std::io::Result<()> {
@@ -174,6 +222,13 @@ impl ToFromBytes for Identity {
         w.write_all(&self.ecdh)?;
         w.write_all(&self.eddsa)?;
         w.write_all(&[0])
+    }
+}
+
+impl Hash for Identity {
+    #[inline(always)]
+    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+        self.address.hash(state);
     }
 }
 
@@ -186,6 +241,32 @@ impl crate::Identity for Identity {
     #[inline(always)]
     fn verify_signature(&self, data: &[u8], signature: &[u8]) -> bool {
         ed25519_verify(&self.eddsa, signature, data)
+    }
+}
+
+impl Serialize for Identity {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        if serializer.is_human_readable() {
+            self.to_string().serialize(serializer)
+        } else {
+            serializer.serialize_bytes(self.to_bytes_on_stack::<8192>().as_bytes())
+        }
+    }
+}
+
+impl<'de> Deserialize<'de> for Identity {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        if deserializer.is_human_readable() {
+            Identity::from_str(<&str>::deserialize(deserializer)?).map_err(|_| serde::de::Error::custom(IDENTITY_ERR.0))
+        } else {
+            Identity::from_bytes(<&[u8]>::deserialize(deserializer)?).map_err(|_| serde::de::Error::custom(IDENTITY_ERR.0))
+        }
     }
 }
 
@@ -304,18 +385,42 @@ impl crate::IdentitySecret for IdentitySecret {
     }
 }
 
+impl Serialize for IdentitySecret {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        (
+            &self.public,
+            &self.ecdh.secret_bytes().as_bytes()[..],
+            &self.eddsa.secret_bytes().as_bytes()[..],
+        )
+            .serialize(serializer)
+    }
+}
+
+impl<'de> Deserialize<'de> for IdentitySecret {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        let d = <(Identity, &[u8], &[u8])>::deserialize(deserializer)?;
+        let ecdh = X25519KeyPair::from_bytes(&d.0.ecdh, d.1).ok_or(serde::de::Error::custom(IDENTITY_ERR.0))?;
+        let eddsa = Ed25519KeyPair::from_bytes(&d.0.eddsa, d.2).ok_or(serde::de::Error::custom(IDENTITY_ERR.0))?;
+        Ok(Self { public: d.0, ecdh, eddsa })
+    }
+}
+
+/// First byte of a the legacy address derivation hash must be less than this.
 const LEGACY_ADDRESS_POW_THRESHOLD: u8 = 17;
 
-// This is the memory-intensive hash used for address derivation in ZeroTier v1
+/// Memory-intensive hash used for address derivation in ZeroTier v1
 fn legacy_address_derivation_work_function(digest_bytes: &mut [u8; 64]) {
     const ADDRESS_DERIVATION_HASH_MEMORY_SIZE: usize = 2097152;
     const ADDRESS_DERIVATION_HASH_MEMORY_SIZE_U64: usize = 2097152 / 8;
 
-    static ADDRESS_DERIVATION_HASH_MEMORY: Mutex<Vec<Box<[u64; ADDRESS_DERIVATION_HASH_MEMORY_SIZE_U64]>>> = Mutex::new(Vec::new());
-
-    let genmem = ADDRESS_DERIVATION_HASH_MEMORY.lock().unwrap().pop();
-    let mut genmem =
-        genmem.unwrap_or_else(|| unsafe { Box::from_raw(alloc(Layout::new::<[u64; ADDRESS_DERIVATION_HASH_MEMORY_SIZE_U64]>()).cast()) });
+    let mut genmem: Box<[u64; ADDRESS_DERIVATION_HASH_MEMORY_SIZE_U64]> =
+        unsafe { Box::from_raw(alloc(Layout::new::<[u64; ADDRESS_DERIVATION_HASH_MEMORY_SIZE_U64]>()).cast()) };
 
     let mut salsa: Salsa<20> = Salsa::new(&digest_bytes[..32], &digest_bytes[32..40]);
     genmem[..8].fill(0);
@@ -350,12 +455,23 @@ fn legacy_address_derivation_work_function(digest_bytes: &mut [u8; 64]) {
         }
     }
 
-    {
-        let mut m = ADDRESS_DERIVATION_HASH_MEMORY.lock().unwrap();
-        if m.len() < parallelism() {
-            m.push(genmem);
-        }
-    }
-
     unsafe { copy_nonoverlapping(digest.as_ptr().cast::<u8>(), digest_bytes.as_mut_ptr(), 64) };
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::*;
+    use zerotier_common_utils::ms_monotonic;
+
+    #[test]
+    fn generate() {
+        let start = ms_monotonic();
+        for _ in 0..3 {
+            let secret = x25519::IdentitySecret::generate();
+            println!("S: {}", secret.to_string());
+            println!("P: {}", secret.public.to_string());
+        }
+        let end = ms_monotonic();
+        println!("generation time: {} ms/identity", ((end - start) as f64) / 3.0);
+    }
 }
