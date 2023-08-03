@@ -21,10 +21,10 @@ const IDENTITY_ERR: InvalidParameterError = InvalidParameterError("invalid ident
 pub struct Address([u8; 5]);
 
 impl Address {
-    pub const LEGACY_RESERVED_PREFIX: u8 = 0xff;
+    pub const RESERVED_PREFIX: u8 = 0xff;
 
     fn is_valid(&self) -> bool {
-        self.0[0] != Self::LEGACY_RESERVED_PREFIX && self.0.iter().all(|x| *x == 0)
+        self.0[0] != Self::RESERVED_PREFIX && self.0.iter().all(|x| *x == 0)
     }
 }
 
@@ -355,7 +355,7 @@ impl crate::IdentitySecret for IdentitySecret {
             let mut legacy_address_hash = legacy_address_hasher.finish();
             legacy_address_derivation_work_function(&mut legacy_address_hash);
             if legacy_address_hash[0] < LEGACY_ADDRESS_POW_THRESHOLD
-                && legacy_address_hash[59] != Address::LEGACY_RESERVED_PREFIX
+                && legacy_address_hash[59] != Address::RESERVED_PREFIX
                 && legacy_address_hash[59..64].iter().any(|i| *i != 0)
             {
                 return Self {
