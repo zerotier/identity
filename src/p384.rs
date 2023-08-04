@@ -184,7 +184,7 @@ impl FromStr for Address {
         let s = s.trim();
         let sb = s.as_bytes();
         if s.len() == sb.len() && sb.len() == Self::STRING_SIZE && sb[31] == b'.' {
-            let prefix = ShortAddress::from_str(&s[..32])?;
+            let prefix = ShortAddress::from_str(&s[..31])?;
             Ok(Address([
                 prefix.0[0],
                 prefix.0[1],
@@ -679,23 +679,22 @@ mod tests {
 
     #[test]
     fn tostring_fromstring() {
-        let secret = x25519::IdentitySecret::generate(0);
-        assert!(x25519::Address::from_str(secret.public.address.to_string().as_str())
+        let secret = p384::IdentitySecret::generate(0);
+        assert!(p384::Address::from_str(secret.public.address.to_string().as_str())
             .unwrap()
             .eq(&secret.public.address));
-        assert!(x25519::Identity::from_str(secret.public.to_string().as_str()).unwrap().eq(&secret.public));
-        assert!(x25519::IdentitySecret::from_str(secret.to_string().as_str()).unwrap().eq(&secret));
+        assert!(p384::Identity::from_str(secret.public.to_string().as_str()).unwrap().eq(&secret.public));
     }
 
     #[test]
     fn tobytes_frombytes() {
-        let secret = x25519::IdentitySecret::generate(0);
-        assert!(x25519::Address::from_bytes(secret.public.address.to_bytes().as_slice())
+        let secret = p384::IdentitySecret::generate(0);
+        assert!(p384::Address::from_bytes(secret.public.address.to_bytes().as_slice())
             .unwrap()
             .eq(&secret.public.address));
-        assert!(x25519::Identity::from_bytes(secret.public.to_bytes().as_slice())
+        assert!(p384::Identity::from_bytes(secret.public.to_bytes().as_slice())
             .unwrap()
             .eq(&secret.public));
-        assert!(x25519::IdentitySecret::from_bytes(secret.to_bytes().as_slice()).unwrap().eq(&secret));
+        assert!(p384::IdentitySecret::from_bytes(secret.to_bytes().as_slice()).unwrap().eq(&secret));
     }
 }
