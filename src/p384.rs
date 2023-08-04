@@ -24,40 +24,61 @@ use zerotier_crypto_glue::p384::*;
 use crate::{base24, base62};
 use crate::{ADDRESS_ERR, IDENTITY_ERR};
 
+// Implementation note: the addresses use u64 arrays that are actually treated as flat byte
+// array memory arenas in order to optimize for fast lookup when these are used as map keys.
+// This reduces the number of instructions required to perform equality comparisons and
+// simplifies the implementation of Hash. The effect is small but might matter at scale.
+
 /// 384-bit ZeroTier address.
+/// An address is the SHA384(public master signing key) of an identity.
 #[repr(transparent)]
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub struct Address([u64; 6]); // treated as [u8; 48]
 
 /// 128-bit short address prefix.
+///
+/// Short addresses are primarily for cases where humans need to type addresses or where
+/// they need to be mapped onto an IPv6 address. The fully qualified 384-bit address
+/// should be preferred if address transfer is automated or via cut/paste.
 #[repr(transparent)]
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub struct ShortAddress([u64; 2]); // treated as [u8; 16]
 
 impl Address {
-    /// These addresses have the prefix 0xfc so their 128-bit short prefix is also a private IPv6 address.
+    /// The first byte of a valid address must be 0xfc.
+    ///
+    /// This allows the 128-bit prefix of every address to also be a valid private IPv6 address,
+    /// which is useful for a number of purposes. It also imposes a small extra computational cost
+    /// on the generation of new identities with a given short address, making it slightly harder
+    /// to brute force the short address space. (A 128-bit space is already impractical to brute
+    /// force, but untargeted birthday type collisions are possible with sufficient storage.)
     pub const REQUIRED_PREFIX: u8 = 0xfc;
 
     /// Length of a full address in string format.
     pub const STRING_SIZE: usize = 76;
 
+    /// Get this address as a raw byte array.
     #[inline(always)]
     pub fn as_bytes(&self) -> &[u8; 48] {
         debug_assert_eq!(size_of::<[u8; 48]>(), size_of::<Self>());
         unsafe { &*self.0.as_ptr().cast::<[u8; 48]>() }
     }
 
+    /// Get this address's 128-bit short prefix.
     #[inline(always)]
     pub fn prefix(&self) -> &ShortAddress {
         unsafe { transmute(&self.0) }
     }
 
+    /// Get mutable bytes.
+    /// This is private because it should be impossible for external code to create an invalid address.
     #[inline(always)]
     fn as_mut_bytes(&mut self) -> &mut [u8; 48] {
         debug_assert_eq!(size_of::<[u8; 48]>(), size_of::<Self>());
         unsafe { &mut *self.0.as_mut_ptr().cast::<[u8; 48]>() }
     }
 
+    /// Check address validity, used in deserialization code.
     #[inline(always)]
     fn is_valid(&self) -> bool {
         self.as_bytes()[0] == Self::REQUIRED_PREFIX
@@ -654,5 +675,27 @@ mod tests {
         }
         let end = ms_monotonic();
         println!("p384 generation time: {} ms/identity", ((end - start) as f64) / 3.0);
+    }
+
+    #[test]
+    fn tostring_fromstring() {
+        let secret = x25519::IdentitySecret::generate(0);
+        assert!(x25519::Address::from_str(secret.public.address.to_string().as_str())
+            .unwrap()
+            .eq(&secret.public.address));
+        assert!(x25519::Identity::from_str(secret.public.to_string().as_str()).unwrap().eq(&secret.public));
+        assert!(x25519::IdentitySecret::from_str(secret.to_string().as_str()).unwrap().eq(&secret));
+    }
+
+    #[test]
+    fn tobytes_frombytes() {
+        let secret = x25519::IdentitySecret::generate(0);
+        assert!(x25519::Address::from_bytes(secret.public.address.to_bytes().as_slice())
+            .unwrap()
+            .eq(&secret.public.address));
+        assert!(x25519::Identity::from_bytes(secret.public.to_bytes().as_slice())
+            .unwrap()
+            .eq(&secret.public));
+        assert!(x25519::IdentitySecret::from_bytes(secret.to_bytes().as_slice()).unwrap().eq(&secret));
     }
 }
