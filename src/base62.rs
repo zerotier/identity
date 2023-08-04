@@ -29,14 +29,30 @@ pub fn decode_11to8(s: &[u8]) -> Result<u64, InvalidParameterError> {
         let c = *c;
         n *= 62;
         n = n.wrapping_add(if c >= 97 && c <= 122 {
-            n - 97
+            c - 97
         } else if c >= 65 && c <= 90 {
-            n - 39
+            c - 39
         } else if c >= 48 && c <= 57 {
-            n + 4
+            c + 4
         } else {
             return Err(InvalidParameterError("invalid base62"));
         } as u64);
     }
     return Ok(n);
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn base62_encode_decode() {
+        let mut tmp = String::with_capacity(16);
+        for _ in 0..10000 {
+            let r = zerotier_crypto_glue::random::next_u64_secure();
+            tmp.clear();
+            encode_8to11(r, &mut tmp);
+            assert_eq!(decode_11to8(tmp.as_bytes()).unwrap(), r);
+        }
+    }
 }

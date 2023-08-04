@@ -1,3 +1,11 @@
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at https://mozilla.org/MPL/2.0/.
+ *
+ * (c) ZeroTier, Inc.
+ * https://www.zerotier.com/
+ */
+
 use std::hash::Hash;
 use std::io::Write;
 use std::mem::{size_of, transmute};
@@ -30,21 +38,23 @@ impl Address {
     /// These addresses have the prefix 0xfc so their 128-bit short prefix is also a private IPv6 address.
     pub const REQUIRED_PREFIX: u8 = 0xfc;
 
+    /// Length of a full address in string format.
+    pub const STRING_SIZE: usize = 76;
+
     #[inline(always)]
     pub fn as_bytes(&self) -> &[u8; 48] {
-        debug_assert_eq!(size_of::<[u8; 48]>(), size_of::<[u64; 6]>());
+        debug_assert_eq!(size_of::<[u8; 48]>(), size_of::<Self>());
         unsafe { &*self.0.as_ptr().cast::<[u8; 48]>() }
     }
 
     #[inline(always)]
     pub fn prefix(&self) -> &ShortAddress {
-        // Safe since this is a transparent u128.
-        unsafe { transmute(&self.0[0]) }
+        unsafe { transmute(&self.0) }
     }
 
     #[inline(always)]
     fn as_mut_bytes(&mut self) -> &mut [u8; 48] {
-        debug_assert_eq!(size_of::<[u8; 48]>(), size_of::<[u64; 6]>());
+        debug_assert_eq!(size_of::<[u8; 48]>(), size_of::<Self>());
         unsafe { &mut *self.0.as_mut_ptr().cast::<[u8; 48]>() }
     }
 
@@ -57,13 +67,13 @@ impl Address {
 impl ShortAddress {
     #[inline(always)]
     pub fn as_bytes(&self) -> &[u8; 16] {
-        debug_assert_eq!(size_of::<[u8; 16]>(), size_of::<[u64; 2]>());
+        debug_assert_eq!(size_of::<[u8; 16]>(), size_of::<Self>());
         unsafe { &*(&self.0 as *const [u64; 2]).cast() }
     }
 
     #[inline(always)]
     fn as_mut_bytes(&mut self) -> &mut [u8; 16] {
-        debug_assert_eq!(size_of::<[u8; 16]>(), size_of::<[u64; 2]>());
+        debug_assert_eq!(size_of::<[u8; 16]>(), size_of::<Self>());
         unsafe { &mut *(&mut self.0 as *mut [u64; 2]).cast() }
     }
 
@@ -127,7 +137,7 @@ fn first_128_to_string(b: &[u8], s: &mut String) {
 
 impl ToString for Address {
     fn to_string(&self) -> String {
-        let mut s = String::with_capacity(76);
+        let mut s = String::with_capacity(Self::STRING_SIZE);
         first_128_to_string(&self.as_bytes()[..16], &mut s);
         s.push('.');
         base62::encode_8to11(u64::from_be(self.0[2]), &mut s);
@@ -152,15 +162,15 @@ impl FromStr for Address {
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         let s = s.trim();
         let sb = s.as_bytes();
-        if s.len() == sb.len() && sb.len() == 76 && sb[32] == b'.' {
+        if s.len() == sb.len() && sb.len() == Self::STRING_SIZE && sb[31] == b'.' {
             let prefix = ShortAddress::from_str(&s[..32])?;
             Ok(Address([
                 prefix.0[0],
                 prefix.0[1],
-                base62::decode_11to8(&sb[33..44])?.to_be(),
-                base62::decode_11to8(&sb[44..55])?.to_be(),
-                base62::decode_11to8(&sb[55..66])?.to_be(),
-                base62::decode_11to8(&sb[66..77])?.to_be(),
+                base62::decode_11to8(&sb[32..43])?.to_be(),
+                base62::decode_11to8(&sb[43..54])?.to_be(),
+                base62::decode_11to8(&sb[54..65])?.to_be(),
+                base62::decode_11to8(&sb[65..76])?.to_be(),
             ]))
         } else {
             Err(ADDRESS_ERR)
@@ -643,6 +653,6 @@ mod tests {
             println!("P: {}", secret.public.to_string());
         }
         let end = ms_monotonic();
-        println!("generation time: {} ms/identity", ((end - start) as f64) / 3.0);
+        println!("p384 generation time: {} ms/identity", ((end - start) as f64) / 3.0);
     }
 }

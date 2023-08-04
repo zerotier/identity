@@ -1,3 +1,11 @@
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at https://mozilla.org/MPL/2.0/.
+ *
+ * (c) ZeroTier, Inc.
+ * https://www.zerotier.com/
+ */
+
 use std::alloc::{alloc, Layout};
 use std::hash::Hash;
 use std::mem::transmute_copy;
@@ -497,7 +505,7 @@ mod tests {
             println!("P: {}", secret.public.to_string());
         }
         let end = ms_monotonic();
-        println!("generation time: {} ms/identity", ((end - start) as f64) / 3.0);
+        println!("x25519 generation time: {} ms/identity", ((end - start) as f64) / 3.0);
     }
 
     #[test]
