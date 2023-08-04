@@ -14,8 +14,7 @@ use zerotier_crypto_glue::hash::SHA512;
 use zerotier_crypto_glue::salsa::Salsa;
 use zerotier_crypto_glue::x25519::*;
 
-const ADDRESS_ERR: InvalidParameterError = InvalidParameterError("invalid address");
-const IDENTITY_ERR: InvalidParameterError = InvalidParameterError("invalid identity");
+use crate::{ADDRESS_ERR, IDENTITY_ERR};
 
 /// Legacy 40-bit ZeroTier address.
 #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
@@ -72,7 +71,7 @@ impl FromStr for Address {
         if s.len() == 10 {
             Self::try_from(hex::from_string_u64(s))
         } else {
-            Err(InvalidParameterError("invalid address"))
+            Err(InvalidParameterError(ADDRESS_ERR.0))
         }
     }
 }
@@ -85,7 +84,7 @@ impl ToFromBytes for Address {
         if tmp.is_valid() {
             Ok(tmp)
         } else {
-            Err(std::io::Error::new(std::io::ErrorKind::Other, "invalid address"))
+            Err(std::io::Error::new(std::io::ErrorKind::Other, ADDRESS_ERR.0))
         }
     }
 
@@ -110,7 +109,7 @@ impl Serialize for Address {
         if serializer.is_human_readable() {
             self.to_string().serialize(serializer)
         } else {
-            serializer.serialize_bytes(&self.0)
+            (self.0[0], self.0[1], self.0[2], self.0[3], self.0[4]).serialize(serializer)
         }
     }
 }
@@ -123,7 +122,13 @@ impl<'de> Deserialize<'de> for Address {
         if deserializer.is_human_readable() {
             Address::from_str(<&str>::deserialize(deserializer)?).map_err(|_| serde::de::Error::custom(ADDRESS_ERR.0))
         } else {
-            Address::from_bytes(<&[u8]>::deserialize(deserializer)?).map_err(|_| serde::de::Error::custom(ADDRESS_ERR.0))
+            let b = <(u8, u8, u8, u8, u8)>::deserialize(deserializer)?;
+            let a = Self([b.0, b.1, b.2, b.3, b.4]);
+            if a.is_valid() {
+                Ok(a)
+            } else {
+                Err(serde::de::Error::custom(ADDRESS_ERR.0))
+            }
         }
     }
 }
@@ -142,12 +147,16 @@ pub struct Identity {
 
 impl Identity {
     fn locally_validate(&self) -> bool {
-        let mut legacy_address_hasher = SHA512::new();
-        legacy_address_hasher.update(&self.ecdh);
-        legacy_address_hasher.update(&self.eddsa);
-        let mut legacy_address_hash = legacy_address_hasher.finish();
-        legacy_address_derivation_work_function(&mut legacy_address_hash);
-        legacy_address_hash[0] < LEGACY_ADDRESS_POW_THRESHOLD && legacy_address_hash[59..64].eq(&self.address.0)
+        if self.address.is_valid() {
+            let mut legacy_address_hasher = SHA512::new();
+            legacy_address_hasher.update(&self.ecdh);
+            legacy_address_hasher.update(&self.eddsa);
+            let mut legacy_address_hash = legacy_address_hasher.finish();
+            legacy_address_derivation_work_function(&mut legacy_address_hash);
+            legacy_address_hash[0] < LEGACY_ADDRESS_POW_THRESHOLD && legacy_address_hash[59..64].eq(&self.address.0)
+        } else {
+            false
+        }
     }
 }
 
@@ -321,32 +330,11 @@ impl PartialEq for IdentitySecret {
 
 impl Eq for IdentitySecret {}
 
-impl PartialOrd for IdentitySecret {
-    #[inline(always)]
-    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
-        self.public.partial_cmp(&other.public)
-    }
-}
-
-impl Ord for IdentitySecret {
-    #[inline(always)]
-    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
-        self.public.cmp(&other.public)
-    }
-}
-
-impl Hash for IdentitySecret {
-    #[inline(always)]
-    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
-        self.public.hash(state);
-    }
-}
-
 impl crate::IdentitySecret for IdentitySecret {
     type Public = Identity;
     type Signature = [u8; 96];
 
-    fn generate() -> Self {
+    fn generate(_timestamp: u64) -> Self {
         let mut ecdh = X25519KeyPair::generate();
         let eddsa = Ed25519KeyPair::generate();
         let mut legacy_address_hasher = SHA512::new();
@@ -388,7 +376,7 @@ impl crate::IdentitySecret for IdentitySecret {
 
 #[derive(Serialize, Deserialize)]
 struct IdentitySecretSerialized {
-    a: Blob<5>,
+    a: Address,
     p0: Blob<C25519_PUBLIC_KEY_SIZE>,
     s0: Blob<C25519_SECRET_KEY_SIZE>,
     p1: Blob<ED25519_PUBLIC_KEY_SIZE>,
@@ -401,7 +389,7 @@ impl Serialize for IdentitySecret {
         S: Serializer,
     {
         IdentitySecretSerialized {
-            a: self.public.address.0.into(),
+            a: self.public.address,
             p0: self.public.ecdh.into(),
             s0: (*self.ecdh.secret_bytes().as_bytes()).into(),
             p1: self.public.eddsa.into(),
@@ -417,26 +405,24 @@ impl<'de> Deserialize<'de> for IdentitySecret {
         D: Deserializer<'de>,
     {
         let d = <IdentitySecretSerialized>::deserialize(deserializer)?;
-        let ecdh = X25519KeyPair::from_bytes(d.p0.as_bytes(), d.s0.as_bytes());
-        let eddsa = Ed25519KeyPair::from_bytes(d.p1.as_bytes(), d.s1.as_bytes());
-        if ecdh.is_none() || eddsa.is_none() {
-            return Err(serde::de::Error::custom(IDENTITY_ERR.0));
+        if let (Some(ecdh), Some(eddsa)) = (
+            X25519KeyPair::from_bytes(d.p0.as_bytes(), d.s0.as_bytes()),
+            Ed25519KeyPair::from_bytes(d.p1.as_bytes(), d.s1.as_bytes()),
+        ) {
+            let id = Self {
+                public: Identity {
+                    address: d.a,
+                    ecdh: ecdh.public_bytes(),
+                    eddsa: eddsa.public_bytes(),
+                },
+                ecdh,
+                eddsa,
+            };
+            if id.public.locally_validate() {
+                return Ok(id);
+            }
         }
-        let ecdh = ecdh.unwrap();
-        let eddsa = eddsa.unwrap();
-        let id = Self {
-            public: Identity {
-                address: Address(d.a.into()),
-                ecdh: ecdh.public_bytes(),
-                eddsa: eddsa.public_bytes(),
-            },
-            ecdh,
-            eddsa,
-        };
-        if !id.public.address.is_valid() || !id.public.locally_validate() {
-            return Err(serde::de::Error::custom(IDENTITY_ERR.0));
-        }
-        return Ok(id);
+        return Err(serde::de::Error::custom(IDENTITY_ERR.0));
     }
 }
 
@@ -506,7 +492,7 @@ mod tests {
     fn generate() {
         let start = ms_monotonic();
         for _ in 0..3 {
-            let secret = x25519::IdentitySecret::generate();
+            let secret = x25519::IdentitySecret::generate(0);
             println!("S: {}", secret.to_string());
             println!("P: {}", secret.public.to_string());
         }
@@ -516,7 +502,7 @@ mod tests {
 
     #[test]
     fn tostring_fromstring() {
-        let secret = x25519::IdentitySecret::generate();
+        let secret = x25519::IdentitySecret::generate(0);
         assert!(x25519::Address::from_str(secret.public.address.to_string().as_str())
             .unwrap()
             .eq(&secret.public.address));
@@ -526,7 +512,7 @@ mod tests {
 
     #[test]
     fn tobytes_frombytes() {
-        let secret = x25519::IdentitySecret::generate();
+        let secret = x25519::IdentitySecret::generate(0);
         assert!(x25519::Address::from_bytes(secret.public.address.to_bytes().as_slice())
             .unwrap()
             .eq(&secret.public.address));
