@@ -5,15 +5,6 @@ license = "MPL-2.0"
 name = "zerotier-identity"
 version = "0.1.0"
 
-[features]
-default = ["legacy_zt1"]
-legacy_zt1 = []
-
-[lib]
-name = "zerotier_identity"
-path = "src/lib.rs"
-doc = true
-
 [dependencies]
 serde = { version = "^1", features = ["derive"], default-features = false }
 serde_cbor = { package = "serde_cbor_2", git = "https://github.com/kanidm/cbor", rev = "ab3296b35322aa5caa79a4ad9ce00a49c000864e" }
