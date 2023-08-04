@@ -374,6 +374,7 @@ impl crate::Address for Address {
     const SIZE: usize = 48;
 }
 
+/// NIST P-384 based new format identity with key upgrade capability.
 #[derive(Clone)]
 pub struct Identity {
     pub address: Address,
@@ -392,6 +393,13 @@ impl Identity {
         sign_tmp.push_slice(self.ecdh.as_bytes());
         sign_tmp.push_slice(self.ecdsa.as_bytes());
         self.address.is_valid() && self.master_signing_key.verify(sign_tmp.as_bytes(), &self.master_signature)
+    }
+
+    /// Returns true if this identity should replace the other.
+    /// This just returns true if the timestamp is newer and the address (master signing key hash) is the same.
+    #[inline(always)]
+    pub fn replaces(&self, other: &Identity) -> bool {
+        self.address == other.address && self.timestamp > other.timestamp
     }
 }
 
@@ -504,6 +512,10 @@ impl crate::Identity for Identity {
     }
 }
 
+/// Secret NIST P-384 identity (also contains public).
+///
+/// The master signing key is optional to allow it to be removed and placed in cold storage.
+/// It's only needed if the identity is to have its regular working keys upgraded.
 pub struct IdentitySecret {
     pub public: Identity,
     pub master_signing_key: Option<P384KeyPair>,
@@ -512,6 +524,7 @@ pub struct IdentitySecret {
 }
 
 impl PartialEq for IdentitySecret {
+    #[inline(always)]
     fn eq(&self, other: &Self) -> bool {
         self.public == other.public
     }
