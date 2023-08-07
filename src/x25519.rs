@@ -283,7 +283,8 @@ impl<'de> Deserialize<'de> for Identity {
         if deserializer.is_human_readable() {
             Identity::from_str(<&str>::deserialize(deserializer)?).map_err(|_| serde::de::Error::custom(IDENTITY_ERR.0))
         } else {
-            Identity::from_bytes(<&[u8]>::deserialize(deserializer)?).map_err(|_| serde::de::Error::custom(IDENTITY_ERR.0))
+            Identity::from_bytes(<&[u8]>::deserialize(deserializer)?)
+                .map_err(|_| serde::de::Error::custom(IDENTITY_ERR.0))
         }
     }
 }
@@ -323,8 +324,10 @@ impl FromStr for IdentitySecret {
         if secret_bytes.len() != C25519_SECRET_KEY_SIZE + ED25519_SECRET_KEY_SIZE {
             return Err(IDENTITY_ERR);
         }
-        let ecdh = X25519KeyPair::from_bytes(&public.ecdh, &secret_bytes.as_slice()[..C25519_SECRET_KEY_SIZE]).ok_or(IDENTITY_ERR)?;
-        let eddsa = Ed25519KeyPair::from_bytes(&public.eddsa, &secret_bytes.as_slice()[C25519_SECRET_KEY_SIZE..]).ok_or(IDENTITY_ERR)?;
+        let ecdh = X25519KeyPair::from_bytes(&public.ecdh, &secret_bytes.as_slice()[..C25519_SECRET_KEY_SIZE])
+            .ok_or(IDENTITY_ERR)?;
+        let eddsa = Ed25519KeyPair::from_bytes(&public.eddsa, &secret_bytes.as_slice()[C25519_SECRET_KEY_SIZE..])
+            .ok_or(IDENTITY_ERR)?;
         return Ok(Self { public, ecdh, eddsa });
     }
 }
@@ -514,8 +517,12 @@ mod tests {
         assert!(x25519::Address::from_str(secret.public.address.to_string().as_str())
             .unwrap()
             .eq(&secret.public.address));
-        assert!(x25519::Identity::from_str(secret.public.to_string().as_str()).unwrap().eq(&secret.public));
-        assert!(x25519::IdentitySecret::from_str(secret.to_string().as_str()).unwrap().eq(&secret));
+        assert!(x25519::Identity::from_str(secret.public.to_string().as_str())
+            .unwrap()
+            .eq(&secret.public));
+        assert!(x25519::IdentitySecret::from_str(secret.to_string().as_str())
+            .unwrap()
+            .eq(&secret));
     }
 
     #[test]
@@ -527,7 +534,9 @@ mod tests {
         assert!(x25519::Identity::from_bytes(secret.public.to_bytes().as_slice())
             .unwrap()
             .eq(&secret.public));
-        assert!(x25519::IdentitySecret::from_bytes(secret.to_bytes().as_slice()).unwrap().eq(&secret));
+        assert!(x25519::IdentitySecret::from_bytes(secret.to_bytes().as_slice())
+            .unwrap()
+            .eq(&secret));
     }
 
     #[test]

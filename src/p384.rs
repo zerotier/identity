@@ -303,14 +303,20 @@ impl PartialOrd for ShortAddress {
 impl Ord for Address {
     #[inline(always)]
     fn cmp(&self, other: &Self) -> std::cmp::Ordering {
-        self.0.iter().map(|i| u64::from_be(*i)).cmp(other.0.iter().map(|i| u64::from_be(*i)))
+        self.0
+            .iter()
+            .map(|i| u64::from_be(*i))
+            .cmp(other.0.iter().map(|i| u64::from_be(*i)))
     }
 }
 
 impl Ord for ShortAddress {
     #[inline(always)]
     fn cmp(&self, other: &Self) -> std::cmp::Ordering {
-        self.0.iter().map(|i| u64::from_be(*i)).cmp(other.0.iter().map(|i| u64::from_be(*i)))
+        self.0
+            .iter()
+            .map(|i| u64::from_be(*i))
+            .cmp(other.0.iter().map(|i| u64::from_be(*i)))
     }
 }
 
@@ -337,7 +343,8 @@ impl<'de> Deserialize<'de> for Address {
         if deserializer.is_human_readable() {
             Address::from_str(<&str>::deserialize(deserializer)?).map_err(|_| serde::de::Error::custom(ADDRESS_ERR.0))
         } else {
-            Address::try_from(<[u8; 48]>::from(Blob::<48>::deserialize(deserializer)?)).map_err(|_| serde::de::Error::custom(ADDRESS_ERR.0))
+            Address::try_from(<[u8; 48]>::from(Blob::<48>::deserialize(deserializer)?))
+                .map_err(|_| serde::de::Error::custom(ADDRESS_ERR.0))
         }
     }
 }
@@ -363,9 +370,11 @@ impl<'de> Deserialize<'de> for ShortAddress {
         D: Deserializer<'de>,
     {
         if deserializer.is_human_readable() {
-            ShortAddress::from_str(<&str>::deserialize(deserializer)?).map_err(|_| serde::de::Error::custom(ADDRESS_ERR.0))
+            ShortAddress::from_str(<&str>::deserialize(deserializer)?)
+                .map_err(|_| serde::de::Error::custom(ADDRESS_ERR.0))
         } else {
-            ShortAddress::try_from(<[u8; 16]>::from(Blob::<16>::deserialize(deserializer)?)).map_err(|_| serde::de::Error::custom(ADDRESS_ERR.0))
+            ShortAddress::try_from(<[u8; 16]>::from(Blob::<16>::deserialize(deserializer)?))
+                .map_err(|_| serde::de::Error::custom(ADDRESS_ERR.0))
         }
     }
 }
@@ -392,7 +401,10 @@ impl Identity {
         sign_tmp.push_slice(&self.timestamp.to_be_bytes());
         sign_tmp.push_slice(self.ecdh.as_bytes());
         sign_tmp.push_slice(self.ecdsa.as_bytes());
-        self.address.is_valid() && self.master_signing_key.verify(sign_tmp.as_bytes(), &self.master_signature)
+        self.address.is_valid()
+            && self
+                .master_signing_key
+                .verify(sign_tmp.as_bytes(), &self.master_signature)
     }
 
     /// Returns true if this identity should replace the other.
@@ -430,13 +442,15 @@ impl FromStr for Identity {
 
 impl ToFromBytes for Identity {
     fn read_bytes<R: std::io::Read>(r: &mut R) -> std::io::Result<Self> {
-        let mut tmp = [0u8; P384_PUBLIC_KEY_SIZE + 8 + P384_PUBLIC_KEY_SIZE + P384_PUBLIC_KEY_SIZE + P384_ECDSA_SIGNATURE_SIZE];
+        let mut tmp =
+            [0u8; P384_PUBLIC_KEY_SIZE + 8 + P384_PUBLIC_KEY_SIZE + P384_PUBLIC_KEY_SIZE + P384_ECDSA_SIGNATURE_SIZE];
         r.read_exact(&mut tmp)?;
         if let (Some(master_signing_key), Some(ecdh), Some(ecdsa)) = (
             P384PublicKey::from_bytes(&tmp[..P384_PUBLIC_KEY_SIZE]),
             P384PublicKey::from_bytes(&tmp[P384_PUBLIC_KEY_SIZE + 8..P384_PUBLIC_KEY_SIZE + 8 + P384_PUBLIC_KEY_SIZE]),
             P384PublicKey::from_bytes(
-                &tmp[P384_PUBLIC_KEY_SIZE + 8 + P384_PUBLIC_KEY_SIZE..P384_PUBLIC_KEY_SIZE + 8 + P384_PUBLIC_KEY_SIZE + P384_PUBLIC_KEY_SIZE],
+                &tmp[P384_PUBLIC_KEY_SIZE + 8 + P384_PUBLIC_KEY_SIZE
+                    ..P384_PUBLIC_KEY_SIZE + 8 + P384_PUBLIC_KEY_SIZE + P384_PUBLIC_KEY_SIZE],
             ),
         ) {
             let id = Self {
@@ -501,7 +515,8 @@ impl Hash for Identity {
 }
 
 impl crate::Identity for Identity {
-    const SIZE: usize = P384_PUBLIC_KEY_SIZE + 8 + P384_PUBLIC_KEY_SIZE + P384_PUBLIC_KEY_SIZE + P384_ECDSA_SIGNATURE_SIZE;
+    const SIZE: usize =
+        P384_PUBLIC_KEY_SIZE + 8 + P384_PUBLIC_KEY_SIZE + P384_PUBLIC_KEY_SIZE + P384_ECDSA_SIGNATURE_SIZE;
     const SIGNATURE_SIZE: usize = P384_ECDSA_SIGNATURE_SIZE;
 
     type Secret = IdentitySecret;
@@ -559,7 +574,10 @@ impl Serialize for IdentitySecret {
         IdentitySecretSerialized {
             a: self.public.address,
             pm: (*self.public.master_signing_key.as_bytes()).into(),
-            sm: self.master_signing_key.as_ref().map(|sk| (*sk.secret_key_bytes().as_bytes()).into()),
+            sm: self
+                .master_signing_key
+                .as_ref()
+                .map(|sk| (*sk.secret_key_bytes().as_bytes()).into()),
             ts: self.public.timestamp,
             p0: (*self.public.ecdh.as_bytes()).into(),
             s0: (*self.ecdh.secret_key_bytes().as_bytes()).into(),
@@ -696,7 +714,9 @@ mod tests {
         assert!(p384::Address::from_str(secret.public.address.to_string().as_str())
             .unwrap()
             .eq(&secret.public.address));
-        assert!(p384::Identity::from_str(secret.public.to_string().as_str()).unwrap().eq(&secret.public));
+        assert!(p384::Identity::from_str(secret.public.to_string().as_str())
+            .unwrap()
+            .eq(&secret.public));
     }
 
     #[test]
@@ -708,6 +728,8 @@ mod tests {
         assert!(p384::Identity::from_bytes(secret.public.to_bytes().as_slice())
             .unwrap()
             .eq(&secret.public));
-        assert!(p384::IdentitySecret::from_bytes(secret.to_bytes().as_slice()).unwrap().eq(&secret));
+        assert!(p384::IdentitySecret::from_bytes(secret.to_bytes().as_slice())
+            .unwrap()
+            .eq(&secret));
     }
 }
