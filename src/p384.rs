@@ -13,7 +13,7 @@ use std::str::FromStr;
 
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 
-use zerotier_common_utils::arrayvec::ArrayVec;
+use zeroize::{Zeroize, ZeroizeOnDrop};
 use zerotier_common_utils::base64;
 use zerotier_common_utils::blob::Blob;
 use zerotier_common_utils::error::InvalidParameterError;
@@ -23,6 +23,8 @@ use zerotier_crypto_glue::p384::*;
 
 use crate::{base24, base62};
 use crate::{ADDRESS_ERR, IDENTITY_ERR};
+
+const IDENTITY_DOMAIN: &[u8] = b"zerotier_p384_identity";
 
 // Implementation note: the addresses use u64 arrays that are actually treated as flat byte
 // array memory arenas in order to optimize for fast lookup when these are used as map keys.
@@ -396,15 +398,16 @@ pub struct Identity {
 
 impl Identity {
     fn locally_validate(&self) -> bool {
-        let mut sign_tmp = ArrayVec::<u8, 256>::new();
-        sign_tmp.push_slice(self.address.as_bytes());
-        sign_tmp.push_slice(&self.timestamp.to_be_bytes());
-        sign_tmp.push_slice(self.ecdh.as_bytes());
-        sign_tmp.push_slice(self.ecdsa.as_bytes());
         self.address.is_valid()
-            && self
-                .master_signing_key
-                .verify(sign_tmp.as_bytes(), &self.master_signature)
+            && self.master_signing_key.verify_all(
+                IDENTITY_DOMAIN,
+                &[
+                    &self.timestamp.to_be_bytes(),
+                    self.ecdh.as_bytes(),
+                    self.ecdsa.as_bytes(),
+                ],
+                &self.master_signature,
+            )
     }
 
     /// Returns true if this identity should replace the other.
@@ -523,7 +526,11 @@ impl crate::Identity for Identity {
 
     #[inline(always)]
     fn verify_signature(&self, data: &[u8], signature: &[u8]) -> bool {
-        self.ecdsa.verify(data, signature)
+        if let Ok(sig) = signature.try_into() {
+            self.ecdsa.verify_raw(data, sig)
+        } else {
+            false
+        }
     }
 }
 
@@ -553,16 +560,22 @@ impl Clone for IdentitySecret {
     }
 }
 
-#[derive(Serialize, Deserialize)]
+#[derive(Serialize, Deserialize, Zeroize, ZeroizeOnDrop)]
 struct IdentitySecretSerialized {
+    #[zeroize(skip)]
     a: Address,
+    #[zeroize(skip)]
     pm: Blob<P384_PUBLIC_KEY_SIZE>,
     sm: Option<Blob<P384_SECRET_KEY_SIZE>>,
+    #[zeroize(skip)]
     ts: u64,
+    #[zeroize(skip)]
     p0: Blob<P384_PUBLIC_KEY_SIZE>,
     s0: Blob<P384_SECRET_KEY_SIZE>,
+    #[zeroize(skip)]
     p1: Blob<P384_PUBLIC_KEY_SIZE>,
     s1: Blob<P384_SECRET_KEY_SIZE>,
+    #[zeroize(skip)]
     ms: Blob<P384_ECDSA_SIGNATURE_SIZE>,
 }
 
@@ -571,21 +584,24 @@ impl Serialize for IdentitySecret {
     where
         S: Serializer,
     {
-        IdentitySecretSerialized {
+        let mut tmp = IdentitySecretSerialized {
             a: self.public.address,
             pm: (*self.public.master_signing_key.as_bytes()).into(),
-            sm: self
-                .master_signing_key
-                .as_ref()
-                .map(|sk| (*sk.secret_key_bytes().as_bytes()).into()),
+            sm: None,
             ts: self.public.timestamp,
             p0: (*self.public.ecdh.as_bytes()).into(),
-            s0: (*self.ecdh.secret_key_bytes().as_bytes()).into(),
+            s0: Blob::default(),
             p1: (*self.public.ecdsa.as_bytes()).into(),
-            s1: (*self.ecdsa.secret_key_bytes().as_bytes()).into(),
+            s1: Blob::default(),
             ms: self.public.master_signature.into(),
+        };
+        self.ecdh.secret_key_bytes(&mut tmp.s0);
+        self.ecdsa.secret_key_bytes(&mut tmp.s1);
+        if let Some(ecdsa) = self.master_signing_key.as_ref() {
+            tmp.sm = Some(Blob::default());
+            ecdsa.secret_key_bytes(tmp.sm.as_mut().unwrap());
         }
-        .serialize(serializer)
+        tmp.serialize(serializer)
     }
 }
 
@@ -651,11 +667,6 @@ impl crate::IdentitySecret for IdentitySecret {
         let ecdh = P384KeyPair::generate();
         let ecdsa = P384KeyPair::generate();
 
-        let mut sign_tmp = ArrayVec::<u8, 256>::new();
-        sign_tmp.push_slice(address.as_bytes());
-        sign_tmp.push_slice(&timestamp.to_be_bytes());
-        sign_tmp.push_slice(ecdh.public_key_bytes());
-        sign_tmp.push_slice(ecdsa.public_key_bytes());
         Self {
             public: Identity {
                 address,
@@ -663,7 +674,14 @@ impl crate::IdentitySecret for IdentitySecret {
                 timestamp,
                 ecdh: ecdh.to_public_key(),
                 ecdsa: ecdsa.to_public_key(),
-                master_signature: master_signing_key.sign(sign_tmp.as_bytes()),
+                master_signature: master_signing_key.sign_all(
+                    IDENTITY_DOMAIN,
+                    &[
+                        &timestamp.to_be_bytes(),
+                        ecdh.public_key_bytes(),
+                        ecdsa.public_key_bytes(),
+                    ],
+                ),
             },
             master_signing_key: Some(master_signing_key),
             ecdh,
@@ -678,7 +696,7 @@ impl crate::IdentitySecret for IdentitySecret {
 
     #[inline(always)]
     fn sign(&self, data: &[u8]) -> Self::Signature {
-        self.ecdsa.sign(data)
+        self.ecdsa.sign_raw(data)
     }
 }
 

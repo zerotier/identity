@@ -14,6 +14,7 @@ use std::str::FromStr;
 
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 
+use zeroize::{Zeroize, ZeroizeOnDrop};
 use zerotier_common_utils::blob::Blob;
 use zerotier_common_utils::error::InvalidParameterError;
 use zerotier_common_utils::hex;
@@ -305,8 +306,11 @@ impl ToString for IdentitySecret {
         tmp.push_str(hex::to_string(&self.public.ecdh).as_str());
         tmp.push_str(hex::to_string(&self.public.eddsa).as_str());
         tmp.push(':');
-        tmp.push_str(hex::to_string(self.ecdh.secret_bytes().as_bytes()).as_str());
-        tmp.push_str(hex::to_string(self.eddsa.secret_bytes().as_bytes()).as_str());
+        let mut buf = [0u8; ED25519_SECRET_KEY_SIZE];
+        self.ecdh.secret_bytes(&mut buf);
+        tmp.push_str(hex::to_string(&buf).as_str());
+        self.eddsa.secret_bytes(&mut buf);
+        tmp.push_str(hex::to_string(&buf).as_str());
         tmp
     }
 }
@@ -324,10 +328,16 @@ impl FromStr for IdentitySecret {
         if secret_bytes.len() != C25519_SECRET_KEY_SIZE + ED25519_SECRET_KEY_SIZE {
             return Err(IDENTITY_ERR);
         }
-        let ecdh = X25519KeyPair::from_bytes(&public.ecdh, &secret_bytes.as_slice()[..C25519_SECRET_KEY_SIZE])
-            .ok_or(IDENTITY_ERR)?;
-        let eddsa = Ed25519KeyPair::from_bytes(&public.eddsa, &secret_bytes.as_slice()[C25519_SECRET_KEY_SIZE..])
-            .ok_or(IDENTITY_ERR)?;
+        let ecdh = X25519KeyPair::from_bytes(
+            &public.ecdh,
+            &secret_bytes.as_slice()[..C25519_SECRET_KEY_SIZE].try_into().unwrap(),
+        )
+        .ok_or(IDENTITY_ERR)?;
+        let eddsa = Ed25519KeyPair::from_bytes(
+            &public.eddsa,
+            &secret_bytes.as_slice()[C25519_SECRET_KEY_SIZE..].try_into().unwrap(),
+        )
+        .ok_or(IDENTITY_ERR)?;
         return Ok(Self { public, ecdh, eddsa });
     }
 }
@@ -385,11 +395,14 @@ impl crate::IdentitySecret for IdentitySecret {
     }
 }
 
-#[derive(Serialize, Deserialize)]
+#[derive(Serialize, Deserialize, Zeroize, ZeroizeOnDrop)]
 struct IdentitySecretSerialized {
+    #[zeroize(skip)]
     a: Address,
+    #[zeroize(skip)]
     p0: Blob<C25519_PUBLIC_KEY_SIZE>,
     s0: Blob<C25519_SECRET_KEY_SIZE>,
+    #[zeroize(skip)]
     p1: Blob<ED25519_PUBLIC_KEY_SIZE>,
     s1: Blob<ED25519_SECRET_KEY_SIZE>,
 }
@@ -399,14 +412,16 @@ impl Serialize for IdentitySecret {
     where
         S: Serializer,
     {
-        IdentitySecretSerialized {
+        let mut tmp = IdentitySecretSerialized {
             a: self.public.address,
             p0: self.public.ecdh.into(),
-            s0: (*self.ecdh.secret_bytes().as_bytes()).into(),
+            s0: Blob::default(),
             p1: self.public.eddsa.into(),
-            s1: (*self.eddsa.secret_bytes().as_bytes()).into(),
-        }
-        .serialize(serializer)
+            s1: Blob::default(),
+        };
+        self.ecdh.secret_bytes(&mut tmp.s0);
+        self.eddsa.secret_bytes(&mut tmp.s1);
+        tmp.serialize(serializer)
     }
 }
 
