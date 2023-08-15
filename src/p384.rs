@@ -24,7 +24,7 @@ use zerotier_crypto_glue::p384::*;
 use crate::{base24, base62};
 use crate::{ADDRESS_ERR, IDENTITY_ERR};
 
-const IDENTITY_DOMAIN: &[u8] = b"identity_subkeys";
+const IDENTITY_DOMAIN: &[u8] = b"identity_subkeys_p384";
 
 // Implementation note: the addresses use u64 arrays that are actually treated as flat byte
 // array memory arenas in order to optimize for fast lookup when these are used as map keys.
