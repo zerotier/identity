@@ -14,7 +14,7 @@ use std::str::FromStr;
 
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 
-use zeroize::{Zeroize, ZeroizeOnDrop};
+use crate::zeroize::{Zeroize, ZeroizeOnDrop};
 use zerotier_common_utils::blob::Blob;
 use zerotier_common_utils::error::InvalidParameterError;
 use zerotier_common_utils::hex;

@@ -78,3 +78,11 @@ pub mod x25519;
 
 pub(crate) const ADDRESS_ERR: InvalidParameterError = InvalidParameterError("invalid address");
 pub(crate) const IDENTITY_ERR: InvalidParameterError = InvalidParameterError("invalid identity");
+
+// Dependency re-export
+pub use serde;
+pub use serde_cbor;
+pub use zeroize;
+pub use zerotier_crypto_glue;
+pub use zerotier_common_utils;
+pub use zerotier_crypto_glue::zssp;
