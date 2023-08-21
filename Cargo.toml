@@ -3,11 +3,11 @@ authors = ["ZeroTier, Inc. <contact@zerotier.com>"]
 edition = "2021"
 license = "MPL-2.0"
 name = "zerotier-identity"
-version = "0.1.0"
+version = "0.1.1"
 
 [dependencies]
-serde = { version = "^1", features = ["derive"], default-features = false }
-serde_cbor = { package = "serde_cbor_2", git = "https://github.com/kanidm/cbor", rev = "ab3296b35322aa5caa79a4ad9ce00a49c000864e" }
-zerotier-common-utils = { git = "https://github.com/zerotier/common-utils.git", branch = "main" }
-zerotier-crypto-glue = { git = "https://github.com/zerotier/crypto-glue.git", branch = "xoshiro" }
+serde = { version = "1.0.183", features = ["derive"], default-features = false }
+serde_cbor = { version = "0.11.2" }
 zeroize = { version = "1.6.0", features = ["zeroize_derive"], default-features = false }
+zerotier-common-utils = { git = "https://github.com/zerotier/common-utils.git", branch = "main" }
+zerotier-crypto-glue = { git = "https://github.com/zerotier/crypto-glue.git", branch = "main" }
