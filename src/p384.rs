@@ -88,15 +88,17 @@ impl Address {
 }
 
 impl ShortAddress {
+    pub const SIZE: usize = 16;
+
     #[inline(always)]
-    pub fn as_bytes(&self) -> &[u8; 16] {
-        debug_assert_eq!(size_of::<[u8; 16]>(), size_of::<Self>());
+    pub fn as_bytes(&self) -> &[u8; Self::SIZE] {
+        debug_assert_eq!(size_of::<[u8; Self::SIZE]>(), size_of::<Self>());
         unsafe { &*(&self.0 as *const [u64; 2]).cast() }
     }
 
     #[inline(always)]
-    fn as_mut_bytes(&mut self) -> &mut [u8; 16] {
-        debug_assert_eq!(size_of::<[u8; 16]>(), size_of::<Self>());
+    fn as_mut_bytes(&mut self) -> &mut [u8; Self::SIZE] {
+        debug_assert_eq!(size_of::<[u8; Self::SIZE]>(), size_of::<Self>());
         unsafe { &mut *(&mut self.0 as *mut [u64; 2]).cast() }
     }
 
