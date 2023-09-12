@@ -486,6 +486,51 @@ impl ToFromBytes for Identity {
     }
 }
 
+
+impl Serialize for Identity {
+    #[inline]
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        if serializer.is_human_readable() {
+            self.to_string().serialize(serializer)
+        } else {
+            serializer.serialize_bytes(self.to_bytes_on_stack::<{P384_PUBLIC_KEY_SIZE + 8 + P384_PUBLIC_KEY_SIZE + P384_PUBLIC_KEY_SIZE + P384_ECDSA_SIGNATURE_SIZE}>().as_ref())
+        }
+    }
+}
+
+impl<'de> Deserialize<'de> for Identity {
+    #[inline]
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        if deserializer.is_human_readable() {
+            Identity::from_str(<&str>::deserialize(deserializer)?)
+                .map_err(|_| serde::de::Error::custom(IDENTITY_ERR.0))
+        } else {
+            struct Visitor;
+
+            impl<'de> serde::de::Visitor<'de> for Visitor {
+                type Value = Identity;
+
+                fn expecting(&self, formatter: &mut std::fmt::Formatter) -> std::fmt::Result {
+                    formatter.write_str("a pair of ratchet states")
+                }
+
+                fn visit_bytes<E>(self, v: &[u8]) -> Result<Self::Value, E>
+                    where
+                        E: serde::de::Error, {
+                    Identity::from_bytes(v).map_err(|_| serde::de::Error::custom(IDENTITY_ERR.0))
+                }
+            }
+            deserializer.deserialize_bytes(Visitor)
+        }
+    }
+}
+
 impl PartialEq for Identity {
     #[inline(always)]
     fn eq(&self, other: &Self) -> bool {
