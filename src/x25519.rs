@@ -7,6 +7,7 @@
  */
 
 use std::alloc::{alloc, Layout};
+use std::fmt::Debug;
 use std::hash::Hash;
 use std::mem::transmute_copy;
 use std::ptr::copy_nonoverlapping;
@@ -69,6 +70,13 @@ impl ToString for Address {
     #[inline(always)]
     fn to_string(&self) -> String {
         hex::to_string(&self.0)
+    }
+}
+
+impl Debug for Address {
+    #[inline]
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(self.to_string().as_str())
     }
 }
 
@@ -177,6 +185,16 @@ impl ToString for Identity {
         tmp.push_str(hex::to_string(&self.ecdh).as_str());
         tmp.push_str(hex::to_string(&self.eddsa).as_str());
         tmp
+    }
+}
+
+impl Debug for Identity {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("x25519::Identity")
+            .field("address", &self.address)
+            .field("ecdh", &self.ecdh)
+            .field("eddsa", &self.eddsa)
+            .finish()
     }
 }
 

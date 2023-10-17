@@ -6,6 +6,7 @@
  * https://www.zerotier.com/
  */
 
+use std::fmt::Debug;
 use std::hash::Hash;
 use std::io::Write;
 use std::mem::{size_of, transmute};
@@ -178,6 +179,20 @@ impl ToString for ShortAddress {
         let mut s = String::with_capacity(32);
         first_128_to_string(self.as_bytes(), &mut s);
         s
+    }
+}
+
+impl Debug for Address {
+    #[inline]
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(self.to_string().as_str())
+    }
+}
+
+impl Debug for ShortAddress {
+    #[inline]
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(self.to_string().as_str())
     }
 }
 
@@ -430,6 +445,19 @@ impl ToString for Identity {
     }
 }
 
+impl Debug for Identity {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("x25519::Identity")
+            .field("address", &self.address)
+            .field("master_signing_key", self.master_signing_key.as_bytes())
+            .field("timestamp", &self.timestamp)
+            .field("ecdh", self.ecdh.as_bytes())
+            .field("ecdsa", self.ecdsa.as_bytes())
+            .field("master_signature", &self.master_signature)
+            .finish()
+    }
+}
+
 impl FromStr for Identity {
     type Err = InvalidParameterError;
 
@@ -486,7 +514,6 @@ impl ToFromBytes for Identity {
     }
 }
 
-
 impl Serialize for Identity {
     #[inline]
     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
@@ -496,7 +523,12 @@ impl Serialize for Identity {
         if serializer.is_human_readable() {
             self.to_string().serialize(serializer)
         } else {
-            serializer.serialize_bytes(self.to_bytes_on_stack::<{P384_PUBLIC_KEY_SIZE + 8 + P384_PUBLIC_KEY_SIZE + P384_PUBLIC_KEY_SIZE + P384_ECDSA_SIGNATURE_SIZE}>().as_ref())
+            serializer.serialize_bytes(
+                self.to_bytes_on_stack::<{
+                    P384_PUBLIC_KEY_SIZE + 8 + P384_PUBLIC_KEY_SIZE + P384_PUBLIC_KEY_SIZE + P384_ECDSA_SIGNATURE_SIZE
+                }>()
+                .as_ref(),
+            )
         }
     }
 }
@@ -508,8 +540,7 @@ impl<'de> Deserialize<'de> for Identity {
         D: Deserializer<'de>,
     {
         if deserializer.is_human_readable() {
-            Identity::from_str(<&str>::deserialize(deserializer)?)
-                .map_err(|_| serde::de::Error::custom(IDENTITY_ERR.0))
+            Identity::from_str(<&str>::deserialize(deserializer)?).map_err(|_| serde::de::Error::custom(IDENTITY_ERR.0))
         } else {
             struct Visitor;
 
@@ -521,8 +552,9 @@ impl<'de> Deserialize<'de> for Identity {
                 }
 
                 fn visit_bytes<E>(self, v: &[u8]) -> Result<Self::Value, E>
-                    where
-                        E: serde::de::Error, {
+                where
+                    E: serde::de::Error,
+                {
                     Identity::from_bytes(v).map_err(|_| serde::de::Error::custom(IDENTITY_ERR.0))
                 }
             }

@@ -6,6 +6,7 @@
  * https://www.zerotier.com/
  */
 
+use std::fmt::Debug;
 use std::hash::Hash;
 use std::str::FromStr;
 
@@ -19,6 +20,7 @@ use zerotier_common_utils::tofrombytes::ToFromBytes;
 pub trait Address:
     ToString
     + FromStr
+    + Debug
     + ToFromBytes
     + Sync
     + Send
@@ -37,7 +39,7 @@ pub trait Address:
 
 /// A bundle of public key(s) securely identifying a participant on the network.
 pub trait Identity:
-    ToString + FromStr + ToFromBytes + Sync + Send + Clone + PartialEq + Eq + Hash + PartialOrd + Ord + 'static
+    ToString + FromStr + Debug + ToFromBytes + Sync + Send + Clone + PartialEq + Eq + Hash + PartialOrd + Ord + 'static
 {
     /// Number of bytes in this identity's byte serialized representation.
     const SIZE: usize;
@@ -83,6 +85,6 @@ pub(crate) const IDENTITY_ERR: InvalidParameterError = InvalidParameterError("in
 pub use serde;
 pub use serde_cbor;
 pub use zeroize;
-pub use zerotier_crypto_glue;
 pub use zerotier_common_utils;
+pub use zerotier_crypto_glue;
 pub use zerotier_crypto_glue::zssp;
