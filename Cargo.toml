@@ -9,5 +9,5 @@ version = "0.1.1"
 serde = { version = "1.0.183", features = ["derive"], default-features = false }
 serde_cbor = { version = "0.11.2" }
 zeroize = { version = "1.6.0", features = ["zeroize_derive"], default-features = false }
-zerotier-common-utils = { git = "https://github.com/zerotier/common-utils.git" }
-zerotier-crypto-glue = { git = "https://github.com/zerotier/crypto-glue.git" }
+zerotier-common-utils = { git = "https://github.com/zerotier/common-utils.git", rev = "1f278eb6e0c266ec9c4cb04bc883ebf3331465a1" }
+zerotier-crypto-glue = { git = "https://github.com/zerotier/crypto-glue.git", rev = "71a31fa25df857eebe8b4ee13c3d1e2be8d3f629" }
