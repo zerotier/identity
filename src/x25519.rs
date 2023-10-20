@@ -20,7 +20,7 @@ use zerotier_common_utils::blob::Blob;
 use zerotier_common_utils::error::InvalidParameterError;
 use zerotier_common_utils::hex;
 use zerotier_common_utils::tofrombytes::ToFromBytes;
-use zerotier_crypto_glue::hash::SHA512;
+use zerotier_crypto_glue::hash::{SHA384, SHA512};
 use zerotier_crypto_glue::salsa::Salsa;
 use zerotier_crypto_glue::x25519::*;
 
@@ -174,6 +174,19 @@ impl Identity {
         } else {
             false
         }
+    }
+
+    /// Get a SHA384 hash of all this identity's elements but with the address overwriting the first 5 bytes.
+    /// This is for use with CAMP and modern federated root backplanes that require all identity types to
+    /// have a full length 384-bit address.
+    pub fn address384(&self) -> [u8; 48] {
+        let mut a384 = SHA384::new();
+        a384.update(&self.address.0);
+        a384.update(&self.ecdh);
+        a384.update(&self.eddsa);
+        let mut a384 = a384.finish();
+        a384[..5].copy_from_slice(&self.address.0);
+        a384
     }
 }
 
