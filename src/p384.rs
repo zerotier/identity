@@ -404,7 +404,6 @@ impl From<ShortAddress> for std::net::Ipv6Addr {
     }
 }
 
-
 impl crate::Address for Address {
     const SIZE: usize = 48;
 }
