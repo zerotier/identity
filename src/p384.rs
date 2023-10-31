@@ -403,6 +403,11 @@ impl From<ShortAddress> for std::net::Ipv6Addr {
         std::net::Ipv6Addr::from(*value.as_bytes())
     }
 }
+impl From<&ShortAddress> for std::net::Ipv6Addr {
+    fn from(value: &ShortAddress) -> Self {
+        std::net::Ipv6Addr::from(*value.as_bytes())
+    }
+}
 
 impl crate::Address for Address {
     const SIZE: usize = 48;
