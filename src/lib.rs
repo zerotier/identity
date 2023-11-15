@@ -52,6 +52,9 @@ pub trait Identity:
 
     /// Verify a signature made by this identity's corresponding secret.
     fn verify_signature(&self, data: &[u8], signature: &[u8]) -> bool;
+
+    /// Verify a signature with a domain restriction parameter.
+    fn verify_domain_restricted_signature(&self, domain: &[u8], data: &[u8], signature: &[u8]) -> bool;
 }
 
 /// Secret keys that correspond to a public Identity.
@@ -71,6 +74,10 @@ pub trait IdentitySecret: Sync + Send + Clone + PartialEq + Eq + Serialize + Des
 
     /// Cryptographically sign a message with this identity.
     fn sign(&self, data: &[u8]) -> Self::Signature;
+
+    /// Cryptographically sign a message with this identity.
+    /// This version takes a domain parameter that helps defend against signature misuse
+    fn sign_domain_restricted(&self, domain: &[u8], data: &[u8]) -> Self::Signature;
 }
 
 mod base24;

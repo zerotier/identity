@@ -292,6 +292,11 @@ impl crate::Identity for Identity {
     fn verify_signature(&self, data: &[u8], signature: &[u8]) -> bool {
         ed25519_verify(&self.eddsa, signature, data)
     }
+
+    #[inline(always)]
+    fn verify_domain_restricted_signature(&self, domain: &[u8], data: &[u8], signature: &[u8]) -> bool {
+        ed25519_verify_domain_restricted(&self.eddsa, signature, domain, data)
+    }
 }
 
 impl Serialize for Identity {
@@ -423,6 +428,16 @@ impl crate::IdentitySecret for IdentitySecret {
     #[inline(always)]
     fn sign(&self, data: &[u8]) -> Self::Signature {
         self.eddsa.sign_zt(data)
+    }
+
+    #[inline(always)]
+    fn sign_domain_restricted(&self, domain: &[u8], data: &[u8]) -> Self::Signature {
+        // Note: this identity type returns a 96-byte signature for backward compatibility with old ZT, but
+        // the last 32 bytes of this signature aren't actually used. Since the domain restricted version is
+        // not used with old ZT, just leave these bytes zero. Only the first 64 bytes matter.
+        let mut tmp = [0u8; 96];
+        tmp[..64].copy_from_slice(&self.eddsa.sign_domain_restricted(domain, data));
+        tmp
     }
 }
 
