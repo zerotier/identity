@@ -25,7 +25,8 @@ use zerotier_crypto_glue::p384::*;
 use crate::{base24, base62};
 use crate::{ADDRESS_ERR, IDENTITY_ERR};
 
-const IDENTITY_DOMAIN: &[u8] = b"identity_subkeys_p384";
+const _DOMAIN_P384_SUBKEY: &[u8] = b"ZTID_P384_SUBKEY";
+const _DOMAIN_P384_MASTER: &[u8] = b"ZTID_P384_MASTER";
 
 // Implementation note: the addresses use u64 arrays that are actually treated as flat byte
 // array memory arenas in order to optimize for fast lookup when these are used as map keys.
@@ -419,9 +420,13 @@ pub struct Identity {
     pub address: Address,
     pub master_signing_key: P384PublicKey,
     pub timestamp: u64,
+    /// IMPORTANT: This key must only be used for authentication in protocols which force the remote
+    /// peer to demonstrate ownership of the secret key, such as ZSSP or challenge-response.
+    /// Otherwise an impersonation attack could possible.
     pub ecdh: P384PublicKey,
     pub ecdsa: P384PublicKey,
     pub master_signature: [u8; P384_ECDSA_SIGNATURE_SIZE],
+    pub ecdsa_signature: [u8; P384_ECDSA_SIGNATURE_SIZE],
 }
 
 impl Identity {
@@ -756,7 +761,12 @@ impl crate::IdentitySecret for IdentitySecret {
 
         let ecdh = P384KeyPair::generate();
         let ecdsa = P384KeyPair::generate();
-
+        let to_be_signed = &[
+            master_signing_key.public_key_bytes().as_slice(),
+            &timestamp.to_be_bytes(),
+            ecdh.public_key_bytes(),
+            ecdsa.public_key_bytes(),
+        ];
         Self {
             public: Identity {
                 address,
@@ -765,12 +775,12 @@ impl crate::IdentitySecret for IdentitySecret {
                 ecdh: ecdh.to_public_key(),
                 ecdsa: ecdsa.to_public_key(),
                 master_signature: master_signing_key.sign_all(
-                    IDENTITY_DOMAIN,
-                    &[
-                        &timestamp.to_be_bytes(),
-                        ecdh.public_key_bytes(),
-                        ecdsa.public_key_bytes(),
-                    ],
+                    DOMAIN_P384_MASTER,
+                    to_be_signed,
+                ),
+                ecdsa_signature: ecdsa.sign_all(
+                    DOMAIN_P384_SUBKEY,
+                    to_be_signed,
                 ),
             },
             master_signing_key: Some(master_signing_key),
