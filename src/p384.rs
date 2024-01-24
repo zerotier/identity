@@ -627,6 +627,15 @@ impl crate::Identity for Identity {
             false
         }
     }
+
+    #[inline(always)]
+    fn verify_domain_restricted_signature(&self, domain: &[u8], data: &[u8], signature: &[u8]) -> bool {
+        if let Ok(sig) = signature.try_into() {
+            self.ecdsa.verify(domain, data, sig)
+        } else {
+            false
+        }
+    }
 }
 
 /// Secret NIST P-384 identity (also contains public).
@@ -797,6 +806,11 @@ impl crate::IdentitySecret for IdentitySecret {
     #[inline(always)]
     fn sign(&self, data: &[u8]) -> Self::Signature {
         self.ecdsa.sign_raw(data)
+    }
+
+    #[inline(always)]
+    fn sign_domain_restricted(&self, domain: &[u8], data: &[u8]) -> Self::Signature {
+        self.ecdsa.sign(domain, data)
     }
 }
 
