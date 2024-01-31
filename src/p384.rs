@@ -25,7 +25,8 @@ use zerotier_crypto_glue::p384::*;
 use crate::{base24, base62};
 use crate::{ADDRESS_ERR, IDENTITY_ERR};
 
-const IDENTITY_DOMAIN: &[u8] = b"identity_subkeys_p384";
+const DOMAIN_MASTER_SIG: &[u8] = b"ZTID_MASTERSIG_P384";
+const DOMAIN_SUBKEY_SIG: &[u8] = b"ZTID_SUBKEYSIG_P384";
 
 // Implementation note: the addresses use u64 arrays that are actually treated as flat byte
 // array memory arenas in order to optimize for fast lookup when these are used as map keys.
@@ -413,6 +414,13 @@ impl crate::Address for Address {
     const SIZE: usize = 48;
 }
 
+const TIMESTAMP_START: usize = P384_PUBLIC_KEY_SIZE;
+const SUBKEY_ECDH_START: usize = TIMESTAMP_START + 8;
+const SUBKEY_ECDSA_START: usize = SUBKEY_ECDH_START + P384_PUBLIC_KEY_SIZE;
+const MASTER_SIG_START: usize = SUBKEY_ECDSA_START + P384_PUBLIC_KEY_SIZE;
+const SUBKEY_SIG_START: usize = MASTER_SIG_START + P384_ECDSA_SIGNATURE_SIZE;
+const P384_IDENTITY_SIZE: usize = SUBKEY_SIG_START + P384_ECDSA_SIGNATURE_SIZE;
+
 /// NIST P-384 based new format identity with key upgrade capability.
 #[derive(Clone)]
 pub struct Identity {
@@ -422,20 +430,23 @@ pub struct Identity {
     pub ecdh: P384PublicKey,
     pub ecdsa: P384PublicKey,
     pub master_signature: [u8; P384_ECDSA_SIGNATURE_SIZE],
+    pub ecdsa_signature: [u8; P384_ECDSA_SIGNATURE_SIZE],
 }
 
 impl Identity {
     fn locally_validate(&self) -> bool {
+        let to_sign: &[&[u8]] = &[
+            self.master_signing_key.as_bytes(),
+            &self.timestamp.to_be_bytes(),
+            self.ecdh.as_bytes(),
+            self.ecdsa.as_bytes(),
+        ];
+
         self.address.is_valid()
-            && self.master_signing_key.verify_all(
-                IDENTITY_DOMAIN,
-                &[
-                    &self.timestamp.to_be_bytes(),
-                    self.ecdh.as_bytes(),
-                    self.ecdsa.as_bytes(),
-                ],
-                &self.master_signature,
-            )
+            && self
+                .master_signing_key
+                .verify_all(DOMAIN_MASTER_SIG, to_sign, &self.master_signature)
+            && self.ecdsa.verify_all(DOMAIN_SUBKEY_SIG, to_sign, &self.ecdsa_signature)
     }
 
     /// Returns true if this identity should replace the other.
@@ -465,6 +476,7 @@ impl Debug for Identity {
             .field("ecdh", self.ecdh.as_bytes())
             .field("ecdsa", self.ecdsa.as_bytes())
             .field("master_signature", &self.master_signature)
+            .field("ecdsa_signature", &self.ecdsa_signature)
             .finish()
     }
 }
@@ -486,26 +498,21 @@ impl FromStr for Identity {
 
 impl ToFromBytes for Identity {
     fn read_bytes<R: std::io::Read>(r: &mut R) -> std::io::Result<Self> {
-        let mut tmp =
-            [0u8; P384_PUBLIC_KEY_SIZE + 8 + P384_PUBLIC_KEY_SIZE + P384_PUBLIC_KEY_SIZE + P384_ECDSA_SIGNATURE_SIZE];
+        let mut tmp = [0u8; P384_IDENTITY_SIZE];
         r.read_exact(&mut tmp)?;
         if let (Some(master_signing_key), Some(ecdh), Some(ecdsa)) = (
-            P384PublicKey::from_bytes(&tmp[..P384_PUBLIC_KEY_SIZE]),
-            P384PublicKey::from_bytes(&tmp[P384_PUBLIC_KEY_SIZE + 8..P384_PUBLIC_KEY_SIZE + 8 + P384_PUBLIC_KEY_SIZE]),
-            P384PublicKey::from_bytes(
-                &tmp[P384_PUBLIC_KEY_SIZE + 8 + P384_PUBLIC_KEY_SIZE
-                    ..P384_PUBLIC_KEY_SIZE + 8 + P384_PUBLIC_KEY_SIZE + P384_PUBLIC_KEY_SIZE],
-            ),
+            P384PublicKey::from_bytes(&tmp[..TIMESTAMP_START]),
+            P384PublicKey::from_bytes(&tmp[SUBKEY_ECDH_START..SUBKEY_ECDSA_START]),
+            P384PublicKey::from_bytes(&tmp[SUBKEY_ECDSA_START..MASTER_SIG_START]),
         ) {
             let id = Self {
                 address: Address(unsafe { transmute(SHA384::hash(master_signing_key.as_bytes())) }),
                 master_signing_key,
-                timestamp: u64::from_be_bytes(tmp[P384_PUBLIC_KEY_SIZE..P384_PUBLIC_KEY_SIZE + 8].try_into().unwrap()),
+                timestamp: u64::from_be_bytes(tmp[TIMESTAMP_START..SUBKEY_ECDH_START].try_into().unwrap()),
                 ecdh,
                 ecdsa,
-                master_signature: tmp[P384_PUBLIC_KEY_SIZE + 8 + P384_PUBLIC_KEY_SIZE + P384_PUBLIC_KEY_SIZE..]
-                    .try_into()
-                    .unwrap(),
+                master_signature: tmp[MASTER_SIG_START..SUBKEY_SIG_START].try_into().unwrap(),
+                ecdsa_signature: tmp[SUBKEY_SIG_START..P384_IDENTITY_SIZE].try_into().unwrap(),
             };
             if id.locally_validate() {
                 return Ok(id);
@@ -514,6 +521,7 @@ impl ToFromBytes for Identity {
         return Err(std::io::Error::new(std::io::ErrorKind::Other, IDENTITY_ERR.0));
     }
 
+    /// This function cannot rollback changes to `w` if an error occurs.
     fn write_bytes<W: std::io::Write>(&self, w: &mut W) -> std::io::Result<()> {
         // The address is SHA384(master_signing_key) so we do not need to output it. We will want
         // to recalculate it to check it anyway.
@@ -521,7 +529,8 @@ impl ToFromBytes for Identity {
         w.write_all(&self.timestamp.to_be_bytes())?;
         w.write_all(self.ecdh.as_bytes())?;
         w.write_all(self.ecdsa.as_bytes())?;
-        w.write_all(&self.master_signature)
+        w.write_all(&self.master_signature)?;
+        w.write_all(&self.ecdsa_signature)
     }
 }
 
@@ -534,12 +543,7 @@ impl Serialize for Identity {
         if serializer.is_human_readable() {
             self.to_string().serialize(serializer)
         } else {
-            serializer.serialize_bytes(
-                self.to_bytes_on_stack::<{
-                    P384_PUBLIC_KEY_SIZE + 8 + P384_PUBLIC_KEY_SIZE + P384_PUBLIC_KEY_SIZE + P384_ECDSA_SIGNATURE_SIZE
-                }>()
-                .as_ref(),
-            )
+            serializer.serialize_bytes(self.to_bytes_on_stack::<P384_IDENTITY_SIZE>().as_ref())
         }
     }
 }
@@ -608,8 +612,7 @@ impl Hash for Identity {
 }
 
 impl crate::Identity for Identity {
-    const SIZE: usize =
-        P384_PUBLIC_KEY_SIZE + 8 + P384_PUBLIC_KEY_SIZE + P384_PUBLIC_KEY_SIZE + P384_ECDSA_SIGNATURE_SIZE;
+    const SIZE: usize = P384_IDENTITY_SIZE;
     const SIGNATURE_SIZE: usize = P384_ECDSA_SIGNATURE_SIZE;
 
     type Secret = IdentitySecret;
@@ -676,6 +679,8 @@ struct IdentitySecretSerialized {
     s1: Blob<P384_SECRET_KEY_SIZE>,
     #[zeroize(skip)]
     ms: Blob<P384_ECDSA_SIGNATURE_SIZE>,
+    #[zeroize(skip)]
+    ss: Blob<P384_ECDSA_SIGNATURE_SIZE>,
 }
 
 impl Serialize for IdentitySecret {
@@ -693,6 +698,7 @@ impl Serialize for IdentitySecret {
             p1: (*self.public.ecdsa.as_bytes()).into(),
             s1: Blob::default(),
             ms: self.public.master_signature.into(),
+            ss: self.public.ecdsa_signature.into(),
         };
         self.ecdh.secret_key_bytes(&mut tmp.s0);
         self.ecdsa.secret_key_bytes(&mut tmp.s1);
@@ -733,6 +739,7 @@ impl<'de> Deserialize<'de> for IdentitySecret {
                             ecdh: ecdh.to_public_key(),
                             ecdsa: ecdsa.to_public_key(),
                             master_signature: *d.ms.as_bytes(),
+                            ecdsa_signature: *d.ss.as_bytes(),
                         },
                         master_signing_key: master_signing_key_sec,
                         ecdh,
@@ -766,6 +773,13 @@ impl crate::IdentitySecret for IdentitySecret {
         let ecdh = P384KeyPair::generate();
         let ecdsa = P384KeyPair::generate();
 
+        let to_sign: &[&[u8]] = &[
+            master_signing_key.public_key_bytes(),
+            &timestamp.to_be_bytes(),
+            ecdh.public_key_bytes(),
+            ecdsa.public_key_bytes(),
+        ];
+
         Self {
             public: Identity {
                 address,
@@ -773,14 +787,8 @@ impl crate::IdentitySecret for IdentitySecret {
                 timestamp,
                 ecdh: ecdh.to_public_key(),
                 ecdsa: ecdsa.to_public_key(),
-                master_signature: master_signing_key.sign_all(
-                    IDENTITY_DOMAIN,
-                    &[
-                        &timestamp.to_be_bytes(),
-                        ecdh.public_key_bytes(),
-                        ecdsa.public_key_bytes(),
-                    ],
-                ),
+                master_signature: master_signing_key.sign_all(DOMAIN_MASTER_SIG, to_sign),
+                ecdsa_signature: ecdsa.sign_all(DOMAIN_SUBKEY_SIG, to_sign),
             },
             master_signing_key: Some(master_signing_key),
             ecdh,
