@@ -217,7 +217,7 @@ impl<'a> From<&'a AnyAddress> for PeerIdentifierRef<'a> {
 }
 
 macro_rules! impl_from {
-    ($ft:ident, $tt:ident::$ev:ident) => {
+    ($ft:ident for $tt:ident::$ev:ident) => {
         impl From<$ft> for $tt {
             #[inline]
             fn from(v: $ft) -> Self {
@@ -233,11 +233,11 @@ macro_rules! impl_from {
     }
 }
 
-impl_from!(Address, AnyAddress::Address);
-impl_from!(ShortAddress, AnyAddress::Short);
-impl_from!(Address, PeerIdentifier::Address);
-impl_from!(ShortAddress, PeerIdentifier::Short);
-impl_from!(Identity, PeerIdentifier::Identity);
+impl_from!(Address for AnyAddress::Address);
+impl_from!(ShortAddress for AnyAddress::Short);
+impl_from!(Address for PeerIdentifier::Address);
+impl_from!(ShortAddress for PeerIdentifier::Short);
+impl_from!(Identity for PeerIdentifier::Identity);
 
 impl<'a> From<&'a Address> for PeerIdentifierRef<'a> {
     fn from(value: &'a Address) -> Self {
