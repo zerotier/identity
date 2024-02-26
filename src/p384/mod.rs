@@ -5,7 +5,6 @@
  * (c) ZeroTier, Inc.
  * https://www.zerotier.com/
  */
-
 use std::fmt::Debug;
 use std::hash::Hash;
 use std::io::Write;
@@ -18,15 +17,17 @@ use crate::zeroize::{Zeroize, ZeroizeOnDrop};
 use zerotier_common_utils::{base64, blob::Blob, error::InvalidParameterError, tofrombytes::ToFromBytes};
 use zerotier_crypto_glue::{hash::SHA384, p384::*};
 
-use crate::base24;
+use crate::{base24, base62};
 use crate::{ADDRESS_ERR, IDENTITY_ERR};
 
 mod address;
+mod identifier;
 mod identity;
 mod identity_secret;
 mod short_address;
 
 pub use address::*;
+pub use identifier::*;
 pub use identity::*;
 pub use identity_secret::*;
 pub use short_address::*;

@@ -5,20 +5,7 @@
  * (c) ZeroTier, Inc.
  * https://www.zerotier.com/
  */
-
-use std::fmt::Debug;
-use std::hash::Hash;
-use std::mem::{size_of, transmute};
-
-use serde::{Deserialize, Deserializer, Serialize, Serializer};
-
 use crate::p384::*;
-use zerotier_common_utils::blob::Blob;
-use zerotier_common_utils::error::InvalidParameterError;
-use zerotier_common_utils::tofrombytes::ToFromBytes;
-
-use crate::base62;
-use crate::ADDRESS_ERR;
 
 // Implementation note: the addresses use u64 arrays that are actually treated as flat byte
 // array memory arenas in order to optimize for fast lookup when these are used as map keys.
