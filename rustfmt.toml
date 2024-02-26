@@ -10,7 +10,8 @@ use_small_heuristics = "Default"
 #fn_single_line = true
 #hex_literal_case = "Lower"
 #merge_imports = false
-group_imports = "StdExternalCrate"
 single_line_if_else_max_width = 0
 use_try_shorthand = true
-imports_granularity = "Module"
+# The following cause warnings on non-nightly channels
+# group_imports = "StdExternalCrate"
+# imports_granularity = "Module"

@@ -17,7 +17,7 @@ pub enum PeerIdentifier {
 pub enum PeerIdentifierRef<'a> {
     Identity(&'a Identity),
     Address(&'a Address),
-    Short(ShortAddress),
+    Short(&'a ShortAddress),
 }
 
 #[derive(Debug, Clone, Copy, Hash)]
@@ -32,7 +32,7 @@ impl<'a> PeerIdentifierRef<'a> {
         match self {
             Identity(id) => (*id).eq(identity),
             Address(id) => identity.address.eq(id),
-            Short(id) => identity.address.prefix().eq(&id),
+            Short(id) => identity.address.prefix().eq(id),
         }
     }
 
@@ -135,27 +135,27 @@ impl AnyAddress {
 }
 
 /// Does not preserve transitivity.
-impl<'a> std::cmp::PartialEq for PeerIdentifierRef<'a> {
+impl<'a> PartialEq for PeerIdentifierRef<'a> {
     fn eq(&self, other: &Self) -> bool {
         use PeerIdentifierRef::*;
         match (self, other) {
             (Identity(identity), id) | (id, Identity(identity)) => id.matches(identity),
             (Address(addr0), Address(addr1)) => addr0.eq(addr1),
             (Address(addr0), Short(addr1)) => addr0.prefix().eq(addr1),
-            (Short(addr0), Address(addr1)) => addr0.eq(addr1.prefix()),
+            (Short(addr0), Address(addr1)) => (*addr0).eq(addr1.prefix()),
             (Short(addr0), Short(addr1)) => addr0.eq(addr1),
         }
     }
 }
 /// Does not preserve transitivity.
-impl std::cmp::PartialEq for PeerIdentifier {
+impl PartialEq for PeerIdentifier {
     fn eq(&self, other: &Self) -> bool {
         let r: PeerIdentifierRef = self.into();
         r.eq(&other.into())
     }
 }
 /// Does not preserve transitivity.
-impl std::cmp::PartialEq for AnyAddress {
+impl PartialEq for AnyAddress {
     fn eq(&self, other: &Self) -> bool {
         use AnyAddress::*;
         match (self, other) {
@@ -167,13 +167,15 @@ impl std::cmp::PartialEq for AnyAddress {
     }
 }
 
+/* Start of Conversions */
+
 impl<'a> From<&'a PeerIdentifier> for PeerIdentifierRef<'a> {
     #[inline]
     fn from(value: &'a PeerIdentifier) -> Self {
         match value {
             PeerIdentifier::Identity(v) => PeerIdentifierRef::Identity(v),
             PeerIdentifier::Address(v) => PeerIdentifierRef::Address(v),
-            PeerIdentifier::Short(v) => PeerIdentifierRef::Short(*v),
+            PeerIdentifier::Short(v) => PeerIdentifierRef::Short(v),
         }
     }
 }
@@ -182,8 +184,8 @@ impl<'a> From<PeerIdentifierRef<'a>> for PeerIdentifier {
     fn from(value: PeerIdentifierRef<'a>) -> Self {
         match value {
             PeerIdentifierRef::Identity(v) => PeerIdentifier::Identity(v.clone()),
-            PeerIdentifierRef::Address(v) => PeerIdentifier::Address(v.clone()),
-            PeerIdentifierRef::Short(v) => PeerIdentifier::Short(v),
+            PeerIdentifierRef::Address(v) => PeerIdentifier::Address(*v),
+            PeerIdentifierRef::Short(v) => PeerIdentifier::Short(*v),
         }
     }
 }
@@ -211,7 +213,7 @@ impl<'a> From<&'a AnyAddress> for PeerIdentifierRef<'a> {
     fn from(value: &'a AnyAddress) -> Self {
         match value {
             AnyAddress::Address(v) => PeerIdentifierRef::Address(v),
-            AnyAddress::Short(v) => PeerIdentifierRef::Short(*v),
+            AnyAddress::Short(v) => PeerIdentifierRef::Short(v),
         }
     }
 }
@@ -230,23 +232,23 @@ macro_rules! impl_from {
                 Self::$ev(v.clone())
             }
         }
-    }
+    };
 }
 
-impl_from!(Address for AnyAddress::Address);
-impl_from!(ShortAddress for AnyAddress::Short);
 impl_from!(Address for PeerIdentifier::Address);
 impl_from!(ShortAddress for PeerIdentifier::Short);
 impl_from!(Identity for PeerIdentifier::Identity);
+impl_from!(Address for AnyAddress::Address);
+impl_from!(ShortAddress for AnyAddress::Short);
 
 impl<'a> From<&'a Address> for PeerIdentifierRef<'a> {
     fn from(value: &'a Address) -> Self {
         Self::Address(value)
     }
 }
-impl<'a> From<&ShortAddress> for PeerIdentifierRef<'a> {
-    fn from(value: &ShortAddress) -> Self {
-        Self::Short(*value)
+impl<'a> From<&'a ShortAddress> for PeerIdentifierRef<'a> {
+    fn from(value: &'a ShortAddress) -> Self {
+        Self::Short(value)
     }
 }
 impl<'a> From<&'a Identity> for PeerIdentifierRef<'a> {

@@ -32,8 +32,8 @@ pub use identity::*;
 pub use identity_secret::*;
 pub use short_address::*;
 
-pub(crate) const DOMAIN_MASTER_SIG: &[u8] = b"ZTID_MASTERSIG_P384";
-pub(crate) const DOMAIN_SUBKEY_SIG: &[u8] = b"ZTID_SUBKEYSIG_P384";
+const DOMAIN_MASTER_SIG: &[u8] = b"ZTID_MASTERSIG_P384";
+const DOMAIN_SUBKEY_SIG: &[u8] = b"ZTID_SUBKEYSIG_P384";
 
 fn first_128_to_string(b: &[u8], s: &mut String) {
     base24::encode_4to7(&b[0..4], s);
