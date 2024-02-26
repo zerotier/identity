@@ -197,6 +197,15 @@ impl From<AnyAddress> for PeerIdentifier {
         }
     }
 }
+impl From<&AnyAddress> for PeerIdentifier {
+    #[inline]
+    fn from(value: &AnyAddress) -> Self {
+        match value {
+            AnyAddress::Address(v) => PeerIdentifier::Address(*v),
+            AnyAddress::Short(v) => PeerIdentifier::Short(*v),
+        }
+    }
+}
 impl<'a> From<&'a AnyAddress> for PeerIdentifierRef<'a> {
     #[inline]
     fn from(value: &'a AnyAddress) -> Self {
@@ -207,52 +216,28 @@ impl<'a> From<&'a AnyAddress> for PeerIdentifierRef<'a> {
     }
 }
 
-impl From<Address> for AnyAddress {
-    fn from(value: Address) -> Self {
-        Self::Address(value)
-    }
-}
-impl From<ShortAddress> for AnyAddress {
-    fn from(value: ShortAddress) -> Self {
-        Self::Short(value)
-    }
-}
-impl From<&Address> for AnyAddress {
-    fn from(value: &Address) -> Self {
-        Self::Address(*value)
-    }
-}
-impl From<&ShortAddress> for AnyAddress {
-    fn from(value: &ShortAddress) -> Self {
-        Self::Short(*value)
+macro_rules! impl_from {
+    ($ft:ident, $tt:ident::$ev:ident) => {
+        impl From<$ft> for $tt {
+            #[inline]
+            fn from(v: $ft) -> Self {
+                Self::$ev(v)
+            }
+        }
+        impl From<&$ft> for $tt {
+            #[inline]
+            fn from(v: &$ft) -> Self {
+                Self::$ev(v.clone())
+            }
+        }
     }
 }
 
-impl From<Address> for PeerIdentifier {
-    fn from(value: Address) -> Self {
-        Self::Address(value)
-    }
-}
-impl From<ShortAddress> for PeerIdentifier {
-    fn from(value: ShortAddress) -> Self {
-        Self::Short(value)
-    }
-}
-impl From<&Address> for PeerIdentifier {
-    fn from(value: &Address) -> Self {
-        Self::Address(*value)
-    }
-}
-impl From<&ShortAddress> for PeerIdentifier {
-    fn from(value: &ShortAddress) -> Self {
-        Self::Short(*value)
-    }
-}
-impl From<Identity> for PeerIdentifier {
-    fn from(value: Identity) -> Self {
-        Self::Identity(value)
-    }
-}
+impl_from!(Address, AnyAddress::Address);
+impl_from!(ShortAddress, AnyAddress::Short);
+impl_from!(Address, PeerIdentifier::Address);
+impl_from!(ShortAddress, PeerIdentifier::Short);
+impl_from!(Identity, PeerIdentifier::Identity);
 
 impl<'a> From<&'a Address> for PeerIdentifierRef<'a> {
     fn from(value: &'a Address) -> Self {
