@@ -122,7 +122,7 @@ impl<'de> Deserialize<'de> for IdentitySecret {
                 }
             }
         }
-        return Err(serde::de::Error::custom(IDENTITY_ERR.0));
+        Err(serde::de::Error::custom(IDENTITY_ERR.0))
     }
 }
 

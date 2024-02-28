@@ -195,7 +195,7 @@ impl<'a> ToString for PeerIdentifierRef<'a> {
         match self {
             Self::Identity(id) => id.to_string(),
             Self::Address(addr) => addr.to_string(),
-            Self::Short(addr) =>  addr.to_string(),
+            Self::Short(addr) => addr.to_string(),
         }
     }
 }
@@ -204,7 +204,7 @@ impl ToString for PeerIdentifier {
         match self {
             Self::Identity(id) => id.to_string(),
             Self::Address(addr) => addr.to_string(),
-            Self::Short(addr) =>  addr.to_string(),
+            Self::Short(addr) => addr.to_string(),
         }
     }
 }
@@ -212,7 +212,7 @@ impl ToString for AnyAddress {
     fn to_string(&self) -> String {
         match self {
             Self::Address(addr) => addr.to_string(),
-            Self::Short(addr) =>  addr.to_string(),
+            Self::Short(addr) => addr.to_string(),
         }
     }
 }
@@ -248,7 +248,7 @@ impl<'a> serde::Serialize for PeerIdentifierRef<'a> {
         match self {
             Self::Identity(id) => id.serialize(s),
             Self::Address(addr) => addr.serialize(s),
-            Self::Short(addr) =>  addr.serialize(s),
+            Self::Short(addr) => addr.serialize(s),
         }
     }
 }
@@ -257,7 +257,7 @@ impl serde::Serialize for PeerIdentifier {
         match self {
             Self::Identity(id) => id.serialize(s),
             Self::Address(addr) => addr.serialize(s),
-            Self::Short(addr) =>  addr.serialize(s),
+            Self::Short(addr) => addr.serialize(s),
         }
     }
 }
@@ -265,7 +265,7 @@ impl serde::Serialize for AnyAddress {
     fn serialize<S: Serializer>(&self, s: S) -> Result<S::Ok, S::Error> {
         match self {
             Self::Address(addr) => addr.serialize(s),
-            Self::Short(addr) =>  addr.serialize(s),
+            Self::Short(addr) => addr.serialize(s),
         }
     }
 }
@@ -288,13 +288,12 @@ impl<'de> Deserialize<'de> for PeerIdentifier {
                     formatter.write_str("a zerotier identifier")
                 }
 
-                fn visit_bytes<E: serde::de::Error>(self, v: &[u8]) -> Result<Self::Value, E>
-                {
+                fn visit_bytes<E: serde::de::Error>(self, v: &[u8]) -> Result<Self::Value, E> {
                     match v.len() {
                         Identity::SIZE => Identity::from_bytes(v).map(Self::Value::Identity),
                         Address::SIZE => Address::from_bytes(v).map(Self::Value::Address),
                         ShortAddress::SIZE => ShortAddress::from_bytes(v).map(Self::Value::Short),
-                        _ => return Err(serde::de::Error::custom(ADDRESS_ERR.0))
+                        _ => return Err(serde::de::Error::custom(ADDRESS_ERR.0)),
                     }
                     .map_err(|_| serde::de::Error::custom(ADDRESS_ERR.0))
                 }
@@ -321,12 +320,11 @@ impl<'de> Deserialize<'de> for AnyAddress {
                     formatter.write_str("a zerotier identifier")
                 }
 
-                fn visit_bytes<E: serde::de::Error>(self, v: &[u8]) -> Result<Self::Value, E>
-                {
+                fn visit_bytes<E: serde::de::Error>(self, v: &[u8]) -> Result<Self::Value, E> {
                     match v.len() {
                         Address::SIZE => Address::from_bytes(v).map(Self::Value::Address),
                         ShortAddress::SIZE => ShortAddress::from_bytes(v).map(Self::Value::Short),
-                        _ => return Err(serde::de::Error::custom(ADDRESS_ERR.0))
+                        _ => return Err(serde::de::Error::custom(ADDRESS_ERR.0)),
                     }
                     .map_err(|_| serde::de::Error::custom(ADDRESS_ERR.0))
                 }
@@ -335,7 +333,6 @@ impl<'de> Deserialize<'de> for AnyAddress {
         }
     }
 }
-
 
 /* Start of Conversions */
 

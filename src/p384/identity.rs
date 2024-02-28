@@ -30,8 +30,12 @@ pub struct Identity {
 impl Identity {
     pub const SIZE: usize = P384_IDENTITY_SIZE;
 
-    pub const STRING_SIZE: usize = 547;
-    pub const STRING_SIZE_NO_PREFIX: usize = 542;
+    pub const STRING_SIZE: usize = 548;
+    pub const STRING_SIZE_NO_PREFIX: usize = 543;
+
+    pub fn prefix(&self) -> &ShortAddress {
+        self.address.prefix()
+    }
 
     pub(crate) fn locally_validate(&self) -> bool {
         let to_sign: &[&[u8]] = &[

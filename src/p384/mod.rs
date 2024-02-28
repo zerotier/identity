@@ -64,7 +64,8 @@ mod tests {
         let start = ms_monotonic();
         for _ in 0..3 {
             let secret = p384::IdentitySecret::generate(1);
-            println!("P: {}", secret.public.to_string());
+            let s = secret.public.to_string();
+            println!("P: {} ({})", s, s.len());
         }
         let end = ms_monotonic();
         println!("p384 generation time: {} ms/identity", ((end - start) as f64) / 3.0);
