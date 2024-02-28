@@ -18,8 +18,8 @@ pub struct ShortAddress(pub(crate) [u64; 2]); // treated as [u8; 16]
 
 impl ShortAddress {
     pub const SIZE: usize = 16;
-    pub const STRING_SIZE: usize = 36;
     pub const STRING_SIZE_NO_PREFIX: usize = 31;
+    pub const STRING_SIZE: usize = Self::STRING_SIZE_NO_PREFIX + PREFIX_SHORT.len();
 
     #[inline(always)]
     pub fn as_bytes(&self) -> &[u8; Self::SIZE] {

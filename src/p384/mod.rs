@@ -40,9 +40,9 @@ const IDENTITY_VARIANT_P384: u8 = 1;
 const DOMAIN_MASTER_SIG: &[u8] = b"ZTID1_MASTERSIG";
 const DOMAIN_SUBKEY_SIG: &[u8] = b"ZTID1_SUBKEYSIG";
 
-const PREFIX_IDENTITY: &str = "zt:i:";
-const PREFIX_ADDRESS: &str = "zt:a:";
-const PREFIX_SHORT: &str = "zt:s:";
+const PREFIX_IDENTITY: &str = "zt:id:";
+const PREFIX_ADDRESS: &str = "zt:addr:";
+const PREFIX_SHORT: &str = "zt:addr:";
 
 fn first_128_to_string(b: &[u8], s: &mut String) {
     base24::encode_4to7(&b[0..4], s);

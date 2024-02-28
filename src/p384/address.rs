@@ -29,9 +29,9 @@ impl Address {
     pub const REQUIRED_PREFIX: u8 = 0xfc;
 
     pub const SIZE: usize = 48;
-    /// Length of a full address in string format.
-    pub const STRING_SIZE: usize = 81;
     pub const STRING_SIZE_NO_PREFIX: usize = 76;
+    /// Length of a full address in string format.
+    pub const STRING_SIZE: usize = Self::STRING_SIZE_NO_PREFIX + PREFIX_ADDRESS.len();
 
     /// Get this address as a raw byte array.
     #[inline(always)]

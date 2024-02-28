@@ -30,8 +30,8 @@ pub struct Identity {
 impl Identity {
     pub const SIZE: usize = P384_IDENTITY_SIZE;
 
-    pub const STRING_SIZE: usize = 548;
     pub const STRING_SIZE_NO_PREFIX: usize = 543;
+    pub const STRING_SIZE: usize = Self::STRING_SIZE_NO_PREFIX + PREFIX_IDENTITY.len();
 
     pub fn prefix(&self) -> &ShortAddress {
         self.address.prefix()
