@@ -134,7 +134,7 @@ impl FromStr for Address {
         let s = s.trim();
         let s = s.strip_prefix(PREFIX_ADDRESS).unwrap_or(s);
         let sb = s.as_bytes();
-        if sb.len() == Self::STRING_SIZE && sb[31] == b'.' {
+        if sb.len() == Self::STRING_SIZE_NO_PREFIX && sb[31] == b'.' {
             let prefix = ShortAddress::from_str(&s[..31])?;
             Ok(Address([
                 prefix.0[0],

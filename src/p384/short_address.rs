@@ -107,7 +107,7 @@ impl FromStr for ShortAddress {
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         let s = s.trim();
         let s = s.strip_prefix(PREFIX_SHORT).unwrap_or(s);
-        if s.len() == Self::STRING_SIZE {
+        if s.len() == Self::STRING_SIZE_NO_PREFIX {
             let mut tmp = [0u8; 16];
             let mut w = &mut tmp[..];
             for ss in s.split('.') {
