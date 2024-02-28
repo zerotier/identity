@@ -32,8 +32,17 @@ pub use identity::*;
 pub use identity_secret::*;
 pub use short_address::*;
 
-const DOMAIN_MASTER_SIG: &[u8] = b"ZTID_MASTERSIG_P384";
-const DOMAIN_SUBKEY_SIG: &[u8] = b"ZTID_SUBKEYSIG_P384";
+/// We won't have more than one identity type for a while, but putting a variant number will allow
+/// us to treat an identity as a discriminated union when we add more.
+/// For security purposes this must be a statically assigned unique number.
+const IDENTITY_VARIANT_P384: u8 = 1;
+
+const DOMAIN_MASTER_SIG: &[u8] = b"ZTID1_MASTERSIG";
+const DOMAIN_SUBKEY_SIG: &[u8] = b"ZTID1_SUBKEYSIG";
+
+const PREFIX_IDENTITY: &str = "zt:i:";
+const PREFIX_ADDRESS: &str = "zt:a:";
+const PREFIX_SHORT: &str = "zt:s:";
 
 fn first_128_to_string(b: &[u8], s: &mut String) {
     base24::encode_4to7(&b[0..4], s);

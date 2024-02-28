@@ -18,6 +18,7 @@ pub struct ShortAddress(pub(crate) [u64; 2]); // treated as [u8; 16]
 
 impl ShortAddress {
     pub const SIZE: usize = 16;
+    pub const STRING_SIZE: usize = 31;
 
     #[inline(always)]
     pub fn as_bytes(&self) -> &[u8; Self::SIZE] {
@@ -34,6 +35,13 @@ impl ShortAddress {
     #[inline(always)]
     fn is_valid(&self) -> bool {
         self.as_bytes()[0] == Address::REQUIRED_PREFIX
+    }
+
+    pub fn write_to_string(&self, s: &mut String, prefix: bool) {
+        if prefix {
+            s.push_str(PREFIX_SHORT);
+        }
+        first_128_to_string(self.as_bytes(), s);
     }
 }
 
@@ -79,6 +87,7 @@ impl ToFromBytes for ShortAddress {
 impl ToString for ShortAddress {
     fn to_string(&self) -> String {
         let mut s = String::with_capacity(32);
+        s.push_str(PREFIX_SHORT);
         first_128_to_string(self.as_bytes(), &mut s);
         s
     }
@@ -96,7 +105,8 @@ impl FromStr for ShortAddress {
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         let s = s.trim();
-        if s.len() == 31 {
+        let s = s.strip_prefix(PREFIX_SHORT).unwrap_or(s);
+        if s.len() == Self::STRING_SIZE {
             let mut tmp = [0u8; 16];
             let mut w = &mut tmp[..];
             for ss in s.split('.') {

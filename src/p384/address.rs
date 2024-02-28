@@ -28,6 +28,7 @@ impl Address {
     /// force, but untargeted birthday type collisions are possible with sufficient storage.)
     pub const REQUIRED_PREFIX: u8 = 0xfc;
 
+    pub const SIZE: usize = 48;
     /// Length of a full address in string format.
     pub const STRING_SIZE: usize = 76;
 
@@ -56,6 +57,18 @@ impl Address {
     #[inline(always)]
     pub(crate) fn is_valid(&self) -> bool {
         self.as_bytes()[0] == Self::REQUIRED_PREFIX
+    }
+
+    pub fn write_to_string(&self, s: &mut String, prefix: bool) {
+        if prefix {
+            s.push_str(PREFIX_ADDRESS);
+        }
+        first_128_to_string(&self.as_bytes()[..16], s);
+        s.push('.');
+        base62::encode_8to11(u64::from_be(self.0[2]), s);
+        base62::encode_8to11(u64::from_be(self.0[3]), s);
+        base62::encode_8to11(u64::from_be(self.0[4]), s);
+        base62::encode_8to11(u64::from_be(self.0[5]), s);
     }
 }
 
@@ -101,12 +114,7 @@ impl ToFromBytes for Address {
 impl ToString for Address {
     fn to_string(&self) -> String {
         let mut s = String::with_capacity(Self::STRING_SIZE);
-        first_128_to_string(&self.as_bytes()[..16], &mut s);
-        s.push('.');
-        base62::encode_8to11(u64::from_be(self.0[2]), &mut s);
-        base62::encode_8to11(u64::from_be(self.0[3]), &mut s);
-        base62::encode_8to11(u64::from_be(self.0[4]), &mut s);
-        base62::encode_8to11(u64::from_be(self.0[5]), &mut s);
+        self.write_to_string(&mut s, true);
         s
     }
 }
@@ -123,8 +131,9 @@ impl FromStr for Address {
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         let s = s.trim();
+        let s = s.strip_prefix(PREFIX_ADDRESS).unwrap_or(s);
         let sb = s.as_bytes();
-        if s.len() == sb.len() && sb.len() == Self::STRING_SIZE && sb[31] == b'.' {
+        if sb.len() == Self::STRING_SIZE && sb[31] == b'.' {
             let prefix = ShortAddress::from_str(&s[..31])?;
             Ok(Address([
                 prefix.0[0],

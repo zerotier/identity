@@ -59,15 +59,23 @@ impl<'a> PeerIdentifierRef<'a> {
     /// Otherwise returns `false`.
     /// This function will debug panic if `self` and `other` are not identifiers for the same peer.
     /// The caller must check for equality before calling this function.
-    /// TODO: make this function take into account identity lifetime.
-    pub fn upgrade_check(self, other: Self) -> bool {
+    pub fn upgrade_check(&self, other: &Self) -> bool {
         debug_assert_eq!(self, other);
         use PeerIdentifierRef::*;
         match (self, other) {
+            (Identity(id1), Identity(id2)) => id1.timestamp < id2.timestamp,
             (Identity(_), _) => false,
             (_, Identity(_)) => true,
             (Short(_), Address(_)) => true,
             _ => false,
+        }
+    }
+
+    pub fn write_to_string(&self, s: &mut String, prefix: bool) {
+        match self {
+            Self::Identity(a) => a.write_to_string(s, prefix),
+            Self::Address(a) => a.write_to_string(s, prefix),
+            Self::Short(a) => a.write_to_string(s, prefix),
         }
     }
 }
@@ -100,7 +108,15 @@ impl PeerIdentifier {
     /// TODO: make this function take into account identity lifetime.
     pub fn upgrade_check(&self, other: &Self) -> bool {
         let r: PeerIdentifierRef = self.into();
-        r.upgrade_check(other.into())
+        r.upgrade_check(&other.into())
+    }
+
+    pub fn write_to_string(&self, s: &mut String, prefix: bool) {
+        match self {
+            Self::Identity(a) => a.write_to_string(s, prefix),
+            Self::Address(a) => a.write_to_string(s, prefix),
+            Self::Short(a) => a.write_to_string(s, prefix),
+        }
     }
 }
 
@@ -130,6 +146,13 @@ impl AnyAddress {
         match (self, other) {
             (Short(_), Address(_)) => true,
             _ => false,
+        }
+    }
+
+    pub fn write_to_string(&self, s: &mut String, prefix: bool) {
+        match self {
+            Self::Address(a) => a.write_to_string(s, prefix),
+            Self::Short(a) => a.write_to_string(s, prefix),
         }
     }
 }
@@ -166,6 +189,153 @@ impl PartialEq for AnyAddress {
         }
     }
 }
+
+impl<'a> ToString for PeerIdentifierRef<'a> {
+    fn to_string(&self) -> String {
+        match self {
+            Self::Identity(id) => id.to_string(),
+            Self::Address(addr) => addr.to_string(),
+            Self::Short(addr) =>  addr.to_string(),
+        }
+    }
+}
+impl ToString for PeerIdentifier {
+    fn to_string(&self) -> String {
+        match self {
+            Self::Identity(id) => id.to_string(),
+            Self::Address(addr) => addr.to_string(),
+            Self::Short(addr) =>  addr.to_string(),
+        }
+    }
+}
+impl ToString for AnyAddress {
+    fn to_string(&self) -> String {
+        match self {
+            Self::Address(addr) => addr.to_string(),
+            Self::Short(addr) =>  addr.to_string(),
+        }
+    }
+}
+impl FromStr for PeerIdentifier {
+    type Err = InvalidParameterError;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        let l = s.len();
+        if l >= Identity::STRING_SIZE {
+            Identity::from_str(s).map(Self::Identity)
+        } else if l >= Address::STRING_SIZE {
+            Address::from_str(s).map(Self::Address)
+        } else {
+            ShortAddress::from_str(s).map(Self::Short)
+        }
+    }
+}
+impl FromStr for AnyAddress {
+    type Err = InvalidParameterError;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        let l = s.len();
+        if l >= Address::STRING_SIZE {
+            Address::from_str(s).map(Self::Address)
+        } else {
+            ShortAddress::from_str(s).map(Self::Short)
+        }
+    }
+}
+
+impl<'a> serde::Serialize for PeerIdentifierRef<'a> {
+    fn serialize<S: Serializer>(&self, s: S) -> Result<S::Ok, S::Error> {
+        match self {
+            Self::Identity(id) => id.serialize(s),
+            Self::Address(addr) => addr.serialize(s),
+            Self::Short(addr) =>  addr.serialize(s),
+        }
+    }
+}
+impl serde::Serialize for PeerIdentifier {
+    fn serialize<S: Serializer>(&self, s: S) -> Result<S::Ok, S::Error> {
+        match self {
+            Self::Identity(id) => id.serialize(s),
+            Self::Address(addr) => addr.serialize(s),
+            Self::Short(addr) =>  addr.serialize(s),
+        }
+    }
+}
+impl serde::Serialize for AnyAddress {
+    fn serialize<S: Serializer>(&self, s: S) -> Result<S::Ok, S::Error> {
+        match self {
+            Self::Address(addr) => addr.serialize(s),
+            Self::Short(addr) =>  addr.serialize(s),
+        }
+    }
+}
+
+impl<'de> Deserialize<'de> for PeerIdentifier {
+    #[inline]
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        if deserializer.is_human_readable() {
+            Self::from_str(<&str>::deserialize(deserializer)?).map_err(|_| serde::de::Error::custom(ADDRESS_ERR.0))
+        } else {
+            struct Visitor;
+
+            impl<'de> serde::de::Visitor<'de> for Visitor {
+                type Value = PeerIdentifier;
+
+                fn expecting(&self, formatter: &mut std::fmt::Formatter) -> std::fmt::Result {
+                    formatter.write_str("a zerotier identifier")
+                }
+
+                fn visit_bytes<E: serde::de::Error>(self, v: &[u8]) -> Result<Self::Value, E>
+                {
+                    match v.len() {
+                        Identity::SIZE => Identity::from_bytes(v).map(Self::Value::Identity),
+                        Address::SIZE => Address::from_bytes(v).map(Self::Value::Address),
+                        ShortAddress::SIZE => ShortAddress::from_bytes(v).map(Self::Value::Short),
+                        _ => return Err(serde::de::Error::custom(ADDRESS_ERR.0))
+                    }
+                    .map_err(|_| serde::de::Error::custom(ADDRESS_ERR.0))
+                }
+            }
+            deserializer.deserialize_bytes(Visitor)
+        }
+    }
+}
+impl<'de> Deserialize<'de> for AnyAddress {
+    #[inline]
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        if deserializer.is_human_readable() {
+            Self::from_str(<&str>::deserialize(deserializer)?).map_err(|_| serde::de::Error::custom(ADDRESS_ERR.0))
+        } else {
+            struct Visitor;
+
+            impl<'de> serde::de::Visitor<'de> for Visitor {
+                type Value = AnyAddress;
+
+                fn expecting(&self, formatter: &mut std::fmt::Formatter) -> std::fmt::Result {
+                    formatter.write_str("a zerotier identifier")
+                }
+
+                fn visit_bytes<E: serde::de::Error>(self, v: &[u8]) -> Result<Self::Value, E>
+                {
+                    match v.len() {
+                        Address::SIZE => Address::from_bytes(v).map(Self::Value::Address),
+                        ShortAddress::SIZE => ShortAddress::from_bytes(v).map(Self::Value::Short),
+                        _ => return Err(serde::de::Error::custom(ADDRESS_ERR.0))
+                    }
+                    .map_err(|_| serde::de::Error::custom(ADDRESS_ERR.0))
+                }
+            }
+            deserializer.deserialize_bytes(Visitor)
+        }
+    }
+}
+
 
 /* Start of Conversions */
 

@@ -7,7 +7,8 @@
  */
 use crate::p384::*;
 
-const TIMESTAMP_START: usize = P384_PUBLIC_KEY_SIZE;
+const MASTER_KEY_START: usize = 1;
+const TIMESTAMP_START: usize = MASTER_KEY_START + P384_PUBLIC_KEY_SIZE;
 const SUBKEY_ECDH_START: usize = TIMESTAMP_START + 8;
 const SUBKEY_ECDSA_START: usize = SUBKEY_ECDH_START + P384_PUBLIC_KEY_SIZE;
 const MASTER_SIG_START: usize = SUBKEY_ECDSA_START + P384_PUBLIC_KEY_SIZE;
@@ -27,6 +28,11 @@ pub struct Identity {
 }
 
 impl Identity {
+    pub const SIZE: usize = P384_IDENTITY_SIZE;
+
+    pub const STRING_SIZE: usize = 547;
+    pub const STRING_SIZE_NO_PREFIX: usize = 542;
+
     pub(crate) fn locally_validate(&self) -> bool {
         let to_sign: &[&[u8]] = &[
             self.master_signing_key.as_bytes(),
@@ -48,15 +54,22 @@ impl Identity {
     pub fn replaces(&self, other: &Identity) -> bool {
         self.address == other.address && self.timestamp > other.timestamp
     }
+
+    pub fn write_to_string(&self, s: &mut String, prefix: bool) {
+        if prefix {
+            s.push_str(PREFIX_IDENTITY);
+        }
+        self.address.write_to_string(s, false);
+        s.push_str(":1:");
+        s.push_str(base64::to_string(self.to_bytes_on_stack::<1024>().as_bytes()).as_str());
+    }
 }
 
 impl ToString for Identity {
     fn to_string(&self) -> String {
-        let mut tmp = String::with_capacity(1024);
-        tmp.push_str(self.address.to_string().as_str());
-        tmp.push_str(":1:");
-        tmp.push_str(base64::to_string(self.to_bytes_on_stack::<1024>().as_bytes()).as_str());
-        tmp
+        let mut s = String::with_capacity(Self::STRING_SIZE);
+        self.write_to_string(&mut s, true);
+        s
     }
 }
 
@@ -78,6 +91,8 @@ impl FromStr for Identity {
     type Err = InvalidParameterError;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
+        let s = s.trim();
+        let s = s.strip_prefix(PREFIX_IDENTITY).unwrap_or(s);
         if let Some(div_idx) = s.rfind(':') {
             if div_idx > 0 && div_idx < s.len() {
                 if let Some(bytes) = base64::from_string(s[div_idx + 1..].as_bytes()) {
@@ -85,7 +100,7 @@ impl FromStr for Identity {
                 }
             }
         }
-        return Err(IDENTITY_ERR);
+        Err(IDENTITY_ERR)
     }
 }
 
@@ -94,7 +109,7 @@ impl ToFromBytes for Identity {
         let mut tmp = [0u8; P384_IDENTITY_SIZE];
         r.read_exact(&mut tmp)?;
         if let (Some(master_signing_key), Some(ecdh), Some(ecdsa)) = (
-            P384PublicKey::from_bytes(&tmp[..TIMESTAMP_START]),
+            P384PublicKey::from_bytes(&tmp[MASTER_KEY_START..TIMESTAMP_START]),
             P384PublicKey::from_bytes(&tmp[SUBKEY_ECDH_START..SUBKEY_ECDSA_START]),
             P384PublicKey::from_bytes(&tmp[SUBKEY_ECDSA_START..MASTER_SIG_START]),
         ) {
@@ -111,13 +126,14 @@ impl ToFromBytes for Identity {
                 return Ok(id);
             }
         }
-        return Err(std::io::Error::new(std::io::ErrorKind::Other, IDENTITY_ERR.0));
+        Err(std::io::Error::new(std::io::ErrorKind::Other, IDENTITY_ERR.0))
     }
 
     /// This function cannot rollback changes to `w` if an error occurs.
     fn write_bytes<W: std::io::Write>(&self, w: &mut W) -> std::io::Result<()> {
         // The address is SHA384(master_signing_key) so we do not need to output it. We will want
         // to recalculate it to check it anyway.
+        w.write_all(&[IDENTITY_VARIANT_P384])?;
         w.write_all(self.master_signing_key.as_bytes())?;
         w.write_all(&self.timestamp.to_be_bytes())?;
         w.write_all(self.ecdh.as_bytes())?;
@@ -156,7 +172,7 @@ impl<'de> Deserialize<'de> for Identity {
                 type Value = Identity;
 
                 fn expecting(&self, formatter: &mut std::fmt::Formatter) -> std::fmt::Result {
-                    formatter.write_str("a pair of ratchet states")
+                    formatter.write_str("a zerotier identifier")
                 }
 
                 fn visit_bytes<E>(self, v: &[u8]) -> Result<Self::Value, E>
