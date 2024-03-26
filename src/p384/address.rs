@@ -35,9 +35,9 @@ impl Address {
 
     /// Get this address as a raw byte array.
     #[inline(always)]
-    pub fn as_bytes(&self) -> &[u8; 48] {
-        debug_assert_eq!(size_of::<[u8; 48]>(), size_of::<Self>());
-        unsafe { &*self.0.as_ptr().cast::<[u8; 48]>() }
+    pub fn as_bytes(&self) -> &[u8; Address::SIZE] {
+        debug_assert_eq!(size_of::<[u8; Address::SIZE]>(), size_of::<Self>());
+        unsafe { &*self.0.as_ptr().cast::<[u8; Address::SIZE]>() }
     }
 
     /// Get this address's 128-bit short prefix.
@@ -49,9 +49,9 @@ impl Address {
     /// Get mutable bytes.
     /// This is private because it should be impossible for external code to create an invalid address.
     #[inline(always)]
-    pub(crate) fn as_mut_bytes(&mut self) -> &mut [u8; 48] {
-        debug_assert_eq!(size_of::<[u8; 48]>(), size_of::<Self>());
-        unsafe { &mut *self.0.as_mut_ptr().cast::<[u8; 48]>() }
+    pub(crate) fn as_mut_bytes(&mut self) -> &mut [u8; Address::SIZE] {
+        debug_assert_eq!(size_of::<[u8; Address::SIZE]>(), size_of::<Self>());
+        unsafe { &mut *self.0.as_mut_ptr().cast::<[u8; Address::SIZE]>() }
     }
 
     /// Check address validity, used in deserialization code.
@@ -73,11 +73,11 @@ impl Address {
     }
 }
 
-impl TryFrom<[u8; 48]> for Address {
+impl TryFrom<[u8; Address::SIZE]> for Address {
     type Error = InvalidParameterError;
 
     #[inline]
-    fn try_from(value: [u8; 48]) -> Result<Self, Self::Error> {
+    fn try_from(value: [u8; Address::SIZE]) -> Result<Self, Self::Error> {
         let a = Self(unsafe { transmute(value) });
         if a.is_valid() {
             Ok(a)
@@ -87,7 +87,7 @@ impl TryFrom<[u8; 48]> for Address {
     }
 }
 
-impl From<Address> for [u8; 48] {
+impl From<Address> for [u8; Address::SIZE] {
     #[inline(always)]
     fn from(value: Address) -> Self {
         unsafe { transmute(value) }
@@ -190,7 +190,7 @@ impl Serialize for Address {
         if serializer.is_human_readable() {
             self.to_string().serialize(serializer)
         } else {
-            <&Blob<48>>::from(self.as_bytes()).serialize(serializer)
+            <&Blob<{ Address::SIZE }>>::from(self.as_bytes()).serialize(serializer)
         }
     }
 }
@@ -204,8 +204,10 @@ impl<'de> Deserialize<'de> for Address {
         if deserializer.is_human_readable() {
             Address::from_str(<&str>::deserialize(deserializer)?).map_err(|_| serde::de::Error::custom(ADDRESS_ERR.0))
         } else {
-            Address::try_from(<[u8; 48]>::from(Blob::<48>::deserialize(deserializer)?))
-                .map_err(|_| serde::de::Error::custom(ADDRESS_ERR.0))
+            Address::try_from(<[u8; Address::SIZE]>::from(Blob::<{ Address::SIZE }>::deserialize(
+                deserializer,
+            )?))
+            .map_err(|_| serde::de::Error::custom(ADDRESS_ERR.0))
         }
     }
 }

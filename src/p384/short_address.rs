@@ -46,11 +46,11 @@ impl ShortAddress {
     }
 }
 
-impl TryFrom<[u8; 16]> for ShortAddress {
+impl TryFrom<[u8; ShortAddress::SIZE]> for ShortAddress {
     type Error = InvalidParameterError;
 
     #[inline]
-    fn try_from(value: [u8; 16]) -> Result<Self, Self::Error> {
+    fn try_from(value: [u8; ShortAddress::SIZE]) -> Result<Self, Self::Error> {
         let a = Self(unsafe { transmute(value) });
         if a.is_valid() {
             Ok(a)
@@ -60,7 +60,7 @@ impl TryFrom<[u8; 16]> for ShortAddress {
     }
 }
 
-impl From<ShortAddress> for [u8; 16] {
+impl From<ShortAddress> for [u8; ShortAddress::SIZE] {
     #[inline(always)]
     fn from(value: ShortAddress) -> Self {
         unsafe { transmute(value) }
@@ -108,7 +108,7 @@ impl FromStr for ShortAddress {
         let s = s.trim();
         let s = s.strip_prefix(PREFIX_SHORT).unwrap_or(s);
         if s.len() == Self::STRING_SIZE_NO_PREFIX {
-            let mut tmp = [0u8; 16];
+            let mut tmp = [0u8; ShortAddress::SIZE];
             let mut w = &mut tmp[..];
             for ss in s.split('.') {
                 if ss.len() == 7 {
@@ -165,7 +165,7 @@ impl Serialize for ShortAddress {
         if serializer.is_human_readable() {
             self.to_string().serialize(serializer)
         } else {
-            <&Blob<16>>::from(self.as_bytes()).serialize(serializer)
+            <&Blob<{ ShortAddress::SIZE }>>::from(self.as_bytes()).serialize(serializer)
         }
     }
 }
@@ -180,8 +180,10 @@ impl<'de> Deserialize<'de> for ShortAddress {
             ShortAddress::from_str(<&str>::deserialize(deserializer)?)
                 .map_err(|_| serde::de::Error::custom(ADDRESS_ERR.0))
         } else {
-            ShortAddress::try_from(<[u8; 16]>::from(Blob::<16>::deserialize(deserializer)?))
-                .map_err(|_| serde::de::Error::custom(ADDRESS_ERR.0))
+            ShortAddress::try_from(<[u8; ShortAddress::SIZE]>::from(
+                Blob::<{ ShortAddress::SIZE }>::deserialize(deserializer)?,
+            ))
+            .map_err(|_| serde::de::Error::custom(ADDRESS_ERR.0))
         }
     }
 }
